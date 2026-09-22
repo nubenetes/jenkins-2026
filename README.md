@@ -1630,126 +1630,788 @@ Below are the direct links and full descriptions, organized by original audio la
 </details>
 
 <details>
-<summary>📂 <strong>Architecture Video Shorts (4 Shorts)</strong></summary>
+<summary>📂 <strong>Architecture Video Shorts (33 Shorts)</strong></summary>
 
 <br/>
 
-##### 1. One Kubernetes Platform, Four CI Engines
-- 🔗 **Link**: [https://www.youtube.com/shorts/KtJjKqAw8Og](https://www.youtube.com/shorts/KtJjKqAw8Og)
-- ⏱️ **Duration**: 1:17
+A complete library of **33 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
+
+### 📑 Quick Index Matrix (Ordered by Criteria)
+
+| # | Short Title | Domain / Pillar | Lang | Duration | Direct Link |
+|---|---|---|---|---|---|
+| 1 | [Deconstructing a Modern Kubernetes Developer Platform](https://www.youtube.com/shorts/61YO2b0fAbM) | Platform Engineering & IDP | 🇬🇧 EN | `1:20` | [▶️ Watch](https://www.youtube.com/shorts/61YO2b0fAbM) |
+| 2 | [Inside a Fully Automated Golden Path IDP](https://www.youtube.com/shorts/hrAAcXsZ5ww) | Platform Engineering & IDP | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/hrAAcXsZ5ww) |
+| 3 | [How Backstage Unifies the Developer Experience](https://www.youtube.com/shorts/yNoi-7PRjuE) | Platform Engineering & IDP | 🇬🇧 EN | `1:26` | [▶️ Watch](https://www.youtube.com/shorts/yNoi-7PRjuE) |
+| 4 | [How the Jenkins 2026 Golden Path Platform Actually Works](https://www.youtube.com/shorts/00R6w7MZIQk) | Platform Engineering & IDP | 🇬🇧 EN | `1:16` | [▶️ Watch](https://www.youtube.com/shorts/00R6w7MZIQk) |
+| 5 | [Inside a Modern Golden Path Developer Platform](https://www.youtube.com/shorts/t3cpUMkYVok) | Platform Engineering & IDP | 🇬🇧 EN | `1:09` | [▶️ Watch](https://www.youtube.com/shorts/t3cpUMkYVok) |
+| 6 | [Inside a Modern GKE Golden Path Platform](https://www.youtube.com/shorts/hUN5_b5th1w) | Platform Engineering & IDP | 🇬🇧 EN | `1:28` | [▶️ Watch](https://www.youtube.com/shorts/hUN5_b5th1w) |
+| 7 | [The Day 0 to Decom Infrastructure Lifecycle](https://www.youtube.com/shorts/6dG3b_AubD4) | Platform Engineering & IDP | 🇬🇧 EN | `1:24` | [▶️ Watch](https://www.youtube.com/shorts/6dG3b_AubD4) |
+| 8 | [How to Pause a Kubernetes Cluster](https://www.youtube.com/shorts/cEr_IwHKj5Q) | Platform Engineering & IDP | 🇬🇧 EN | `1:18` | [▶️ Watch](https://www.youtube.com/shorts/cEr_IwHKj5Q) |
+| 9 | [One Kubernetes Platform, Four CI Engines](https://www.youtube.com/shorts/KtJjKqAw8Og) | Pluggable CI Engines | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/KtJjKqAw8Og) |
+| 10 | [How Feature Flags Morph This Golden Path Platform](https://www.youtube.com/shorts/yqS2oxYoNOc) | Pluggable CI Engines | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/yqS2oxYoNOc) |
+| 11 | [Modern Jenkins: The Three Layer Hybrid Pipeline](https://www.youtube.com/shorts/dNUzh7A8LEY) | Pluggable CI Engines | 🇬🇧 EN | `1:25` | [▶️ Watch](https://www.youtube.com/shorts/dNUzh7A8LEY) |
+| 12 | [Dynamic Branch Tracking: Testing Jenkins Pipelines Safely](https://www.youtube.com/shorts/LO-yLAWNdWk) | Pluggable CI Engines | 🇬🇧 EN | `1:08` | [▶️ Watch](https://www.youtube.com/shorts/LO-yLAWNdWk) |
+| 13 | [How Tekton and ArgoCD Isolate Deployments](https://www.youtube.com/shorts/Ebcarw910iI) | Pluggable CI Engines | 🇬🇧 EN | `1:08` | [▶️ Watch](https://www.youtube.com/shorts/Ebcarw910iI) |
+| 14 | [How Actions Runner Controller Secures CI CD](https://www.youtube.com/shorts/x_cuaD5WKbE) | Pluggable CI Engines | 🇬🇧 EN | `1:09` | [▶️ Watch](https://www.youtube.com/shorts/x_cuaD5WKbE) |
+| 15 | [Inside a Modern Argo Workflows Pipeline](https://www.youtube.com/shorts/4wepJdUzD0A) | Pluggable CI Engines | 🇬🇧 EN | `1:05` | [▶️ Watch](https://www.youtube.com/shorts/4wepJdUzD0A) |
+| 16 | [Inside a Modern Two Repo GitOps Architecture](https://www.youtube.com/shorts/23Ek_Yhr4mg) | GitOps & Progressive Delivery | 🇬🇧 EN | `1:10` | [▶️ Watch](https://www.youtube.com/shorts/23Ek_Yhr4mg) |
+| 17 | [How GitOps Reverses Kubernetes Deployments](https://www.youtube.com/shorts/U4TtIS4k5qs) | GitOps & Progressive Delivery | 🇬🇧 EN | `1:09` | [▶️ Watch](https://www.youtube.com/shorts/U4TtIS4k5qs) |
+| 18 | [How GitOps Makes CI Replays Safe](https://www.youtube.com/shorts/lxSvdeUuVK4) | GitOps & Progressive Delivery | 🇬🇧 EN | `1:13` | [▶️ Watch](https://www.youtube.com/shorts/lxSvdeUuVK4) |
+| 19 | [Scaling GitOps with ArgoCD ApplicationSets](https://www.youtube.com/shorts/jjtTNG0sTWU) | GitOps & Progressive Delivery | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/jjtTNG0sTWU) |
+| 20 | [How Two Repo GitOps Protects Production](https://www.youtube.com/shorts/lTpkd03oxmM) | GitOps & Progressive Delivery | 🇬🇧 EN | `1:21` | [▶️ Watch](https://www.youtube.com/shorts/lTpkd03oxmM) |
+| 21 | [Solving the IaC Bootstrap Paradox](https://www.youtube.com/shorts/3Ck2Eg1wfpc) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/3Ck2Eg1wfpc) |
+| 22 | [How Keyless Cloud Authentication Works](https://www.youtube.com/shorts/djvxDx8bG40) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:21` | [▶️ Watch](https://www.youtube.com/shorts/djvxDx8bG40) |
+| 23 | [Inside a Modern Golden Path DevSecOps Pipeline](https://www.youtube.com/shorts/eCPhd1fxvLQ) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/eCPhd1fxvLQ) |
+| 24 | [Routing Internal URLs With Service Mesh](https://www.youtube.com/shorts/go_sCgyASe4) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/go_sCgyASe4) |
+| 25 | [How Split Brain DNS Keeps Traffic Hidden](https://www.youtube.com/shorts/moT_HjQsuF4) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:09` | [▶️ Watch](https://www.youtube.com/shorts/moT_HjQsuF4) |
+| 26 | [The Ultimate Plug and Play Observability Stack](https://www.youtube.com/shorts/s0tSsiQMA_Y) | Observability & Databases | 🇬🇧 EN | `1:07` | [▶️ Watch](https://www.youtube.com/shorts/s0tSsiQMA_Y) |
+| 27 | [How OpenTelemetry Connects System Data](https://www.youtube.com/shorts/n5f-v8_Ftok) | Observability & Databases | 🇬🇧 EN | `1:14` | [▶️ Watch](https://www.youtube.com/shorts/n5f-v8_Ftok) |
+| 28 | [Complete Kubernetes Observability in Grafana](https://www.youtube.com/shorts/GSC0iamzdjs) | Observability & Databases | 🇬🇧 EN | `1:20` | [▶️ Watch](https://www.youtube.com/shorts/GSC0iamzdjs) |
+| 29 | [Inside a Modern Kubernetes Observability Stack](https://www.youtube.com/shorts/9j31eNTsN6E) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/9j31eNTsN6E) |
+| 30 | [Comparing Four Grafana Deployment Architectures](https://www.youtube.com/shorts/Z8U2CP5W7Q4) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/Z8U2CP5W7Q4) |
+| 31 | [Inside the Jenkins 2026 Grafana Alert Strategy](https://www.youtube.com/shorts/33hTEro0O78) | Observability & Databases | 🇬🇧 EN | `1:23` | [▶️ Watch](https://www.youtube.com/shorts/33hTEro0O78) |
+| 32 | [How Parameterized k6 Testing Closes the CI CD Loop](https://www.youtube.com/shorts/yG5DiLG2Cus) | Observability & Databases | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/yG5DiLG2Cus) |
+| 33 | [Inside the Golden Path Database Architecture](https://www.youtube.com/shorts/Xp5zHzLiadk) | Observability & Databases | 🇬🇧 EN | `1:25` | [▶️ Watch](https://www.youtube.com/shorts/Xp5zHzLiadk) |
+
+---
+
+#### Category 1: 🏛️ Enterprise Platform Engineering & Internal Developer Platform (IDP)
+
+##### 1. Deconstructing a Modern Kubernetes Developer Platform
+- 🔗 **Link**: [https://www.youtube.com/shorts/61YO2b0fAbM](https://www.youtube.com/shorts/61YO2b0fAbM)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:20
+- 🏷️ **Domain**: Platform Engineering & IDP
 - 📝 **Full Description**:
-> ⚙️ One Kubernetes Platform, Four CI Engines!
+> 🚀 Building a Kubernetes developer platform usually means clicking through messy dashboards and hardcoding passwords. Here is an entire software factory defined as code!
 >
-> Can a single cloud-native platform run and interchange 4 major CI engines without rewriting application contracts?
+> A comprehensive architectural tour deconstructing the GKE Golden Path platform. Watch how Jenkins is provisioned purely as code via JCasC and Job-DSL, how GitOps firewalls production deployments, how keyless Workload Identity eliminates passwords, and how Backstage unifies operations into a single pane of glass.
 >
-> In this 60-second architecture demo, we showcase the jenkins-2026 platform on Google Kubernetes Engine (GKE):
->
-> 🔥 The 4 Pluggable CI Engines (Selected via `ci.engine` feature flag):
-> 1️⃣ Jenkins (JCasC + Job-DSL seed + Groovy shared library)
-> 2️⃣ Tekton (Kubernetes-native pipeline tasks)
-> 3️⃣ GitHub Actions ARC (Self-hosted Actions Runner Controller)
-> 4️⃣ Argo Workflows (Declarative workflow orchestration)
->
-> 🚀 Unified Platform Engineering Stack:
-> • One 11-stage pipeline contract & shared services registry
-> • Zero-touch GitOps continuous delivery via ArgoCD & Argo Rollouts
-> • Developer Portal: Spotify Backstage IDP as a unified single pane of glass
-> • Keyless security: 100% Workload Identity Federation (Zero JSON service keys)
-> • Kubernetes Gateway API + Google Identity-Aware Proxy (IAP)
+> 📌 Key Architectural Highlights:
+> • 100% Codified CI: Zero UI setup—Jenkins configuration and job creation run entirely from text files.
+> • Two-Repo GitOps Safety: Complete physical separation between CI build systems and production Kubernetes clusters.
+> • Keyless Cloud Security: Workload Identity Federation validates ephemeral tokens on the fly.
+> • Unified Backstage Portal: Aggregates build history, ArgoCD status, and Grafana telemetry into one dashboard.
 >
 > 👇 Explore the Full Architecture & Source Code:
-> 📁 GitHub: https://github.com/nubenetes/jenkins-2026
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Kubernetes #PlatformEngineering #DevOps #GitOps #Backstage #Jenkins #GKE
+
+##### 2. Inside a Fully Automated Golden Path IDP
+- 🔗 **Link**: [https://www.youtube.com/shorts/hrAAcXsZ5ww](https://www.youtube.com/shorts/hrAAcXsZ5ww)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:19
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 What does a production-ready Internal Developer Platform actually look like under the hood? Here are the 4 automated pillars of the Jenkins 2026 platform!
+>
+> Examine the 4 foundational pillars of the Jenkins 2026 Golden Path IDP: 1) Strict GitOps delivery separation, 2) Dedicated CloudNativePG HA databases per microservice, 3) End-to-end OpenTelemetry funneled to Grafana, and 4) Zero-trust perimeter security with Workload Identity Federation and WireGuard node encryption.
+>
+> 📌 Key Architectural Highlights:
+> • Pillar 1 - GitOps Separation: CI commits tags to Git; ArgoCD reconciles into Kubernetes.
+> • Pillar 2 - Stateful Data Architecture: CloudNativePG HA PostgreSQL with 3 synced instances and automated backups.
+> • Pillar 3 - Full-Stack Telemetry: Correlated traces, metrics, and logs across microservices and cluster nodes.
+> • Pillar 4 - Zero-Trust Perimeter: No static JSON keys + WireGuard hardware-accelerated inter-node encryption.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #IDP #PlatformEngineering #Kubernetes #GitOps #CloudNativePG #OpenTelemetry #WireGuard
+
+##### 3. How Backstage Unifies the Developer Experience
+- 🔗 **Link**: [https://www.youtube.com/shorts/yNoi-7PRjuE](https://www.youtube.com/shorts/yNoi-7PRjuE)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:26
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 Jumping between 15 tabs for code, builds, and monitoring kills engineering productivity. Here is how Backstage unifies your software factory into one pane of glass!
+>
+> Discover how Spotify Backstage acts as the central command center for the GKE Golden Path platform. Rather than a static catalog, this engine-aware portal dynamically reflects whichever CI engine is active, embeds Grafana metrics and Dependabot alerts, and provides a Golden Path Scaffolder that onboards services via Git Pull Requests without requiring elevated repo creation rights.
+>
+> 📌 Key Architectural Highlights:
+> • Engine-Aware Visualization: Dynamically switches CI tabs between Jenkins, Tekton, Argo, and GitHub Actions.
+> • Golden Path Scaffolder: One form generates pull requests to register microservices across CI and GitOps.
+> • Unified Observability Tab: In-portal Grafana dashboards and vulnerability scan summaries per entity.
+> • Identity-Aware Proxy (IAP): Single Google SSO authentication perimeter protecting all developer tooling.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Backstage #DeveloperPortal #PlatformEngineering #DevOps #Kubernetes #GKE #IAP
+
+##### 4. How the Jenkins 2026 Golden Path Platform Actually Works
+- 🔗 **Link**: [https://www.youtube.com/shorts/00R6w7MZIQk](https://www.youtube.com/shorts/00R6w7MZIQk)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:16
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 Building an internal developer platform shouldn't lock you into a rigid toolchain. Here is how the Jenkins 2026 zero-touch factory actually works!
+>
+> See the end-to-end developer journey in the Jenkins 2026 platform. From filling out a single Backstage form that generates service PRs, to pushing code through an isolated CI engine, to automated ArgoCD deployments with HA PostgreSQL and OpenTelemetry monitoring attached automatically.
+>
+> 📌 Key Architectural Highlights:
+> • Central Switchboard: Easily toggle between 4 CI engines and 4 observability backends via feature flags.
+> • Zero-Touch Onboarding: Developers complete one portal form; the platform generates all integration PRs.
+> • Isolated Delivery: Build runners compile code and push tags to GitOps; ArgoCD handles live deployment.
+> • Automated Platform Services: CloudNativePG databases and OTel agents attach automatically without code changes.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Jenkins #PlatformEngineering #GoldenPath #DevOps #GitOps #ArgoCD #Kubernetes
+
+##### 5. Inside a Modern Golden Path Developer Platform
+- 🔗 **Link**: [https://www.youtube.com/shorts/t3cpUMkYVok](https://www.youtube.com/shorts/t3cpUMkYVok)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:09
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 Stop duct-taping dozens of fragile DevOps tools together. Here is how to architect an enterprise zero-trust software factory entirely as code!
+>
+> A comprehensive deep dive into the architecture of a modern cloud-native software factory. Covers the 2-repo GitOps firewall, the pluggable 4-engine CI plane, engine-aware Backstage developer portals, eBPF kernel isolation with Dataplane V2, and keyless authentication via Workload Identity Federation.
+>
+> 📌 Key Architectural Highlights:
+> • Strict Two-Repo Firewall: Decouples human infrastructure code from machine-generated deployment state.
+> • Pluggable Execution Plane: Hot-swap between Jenkins, Tekton, GitHub Actions, and Argo on the same 11-stage contract.
+> • Kernel-Level Network Security: Cilium eBPF enforces default-deny network postures inside the Linux kernel.
+> • Keyless Identity: Replaces static JSON service account credentials with short-lived OIDC tokens.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #PlatformEngineering #ZeroTrust #DevOps #eBPF #DataplaneV2 #GKE #GitOps
+
+##### 6. Inside a Modern GKE Golden Path Platform
+- 🔗 **Link**: [https://www.youtube.com/shorts/hUN5_b5th1w](https://www.youtube.com/shorts/hUN5_b5th1w)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:28
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 What does an enterprise-grade Kubernetes landing zone look like in 2026? Here is the GKE Golden Path platform built on zero-trust networking!
+>
+> Explore the complete infrastructure architecture of the GKE Golden Path platform. Features GKE Dataplane V2 (Cilium eBPF) for default-deny network policy enforcement at the Linux kernel level, WireGuard node-to-node encryption, GKE Gateway API with BackendTLSPolicy, and Google Identity-Aware Proxy (IAP) securing ingress traffic.
+>
+> 📌 Key Architectural Highlights:
+> • Kernel-Level Isolation: GKE Dataplane V2 (eBPF) enforces default-deny microservice security in the kernel.
+> • WireGuard Mesh: Transparent, hardware-accelerated inter-node transit encryption across the cluster.
+> • GKE Gateway API & BackendTLS: End-to-end TLS encryption from the external load balancer down to pod NEGs.
+> • Google Identity-Aware Proxy (IAP): Zero-trust identity and context-aware access control protecting platform tools.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #GKE #Kubernetes #ZeroTrust #GatewayAPI #WireGuard #eBPF #GoogleCloud
+
+##### 7. The Day 0 to Decom Infrastructure Lifecycle
+- 🔗 **Link**: [https://www.youtube.com/shorts/6dG3b_AubD4](https://www.youtube.com/shorts/6dG3b_AubD4)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:24
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 How does automated infrastructure safely build and erase massive cloud environments without drift or leftover bills?
+>
+> Follow the end-to-end lifecycle of an enterprise GKE platform: Day 0 (immutable GCS bucket & WIF trust foundation), Day 1 (automated idempotent cluster & service bootstrap), Day 2 (surgical in-place updates without downtime), and Decom (clean teardown destroying ephemeral resources to stop cloud costs).
+>
+> 📌 Key Architectural Highlights:
+> • Day 0 Foundation: Establishing immutable cloud roots of trust and state locking buckets.
+> • Day 1 Idempotency: Workflows build only what is missing, surviving sudden pipeline cancellations.
+> • Day 2 Surgical Patching: Automated workflows apply configuration changes without downtime.
+> • Decom Phase: Complete teardown of compute and networking, leaving Day 0 intact for rapid redeployment.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Terraform #FinOps #DevOps #InfrastructureAsCode #GKE #GitHubActions #Day0ToDecom
+
+##### 8. How to Pause a Kubernetes Cluster
+- 🔗 **Link**: [https://www.youtube.com/shorts/cEr_IwHKj5Q](https://www.youtube.com/shorts/cEr_IwHKj5Q)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:18
+- 🏷️ **Domain**: Platform Engineering & IDP
+- 📝 **Full Description**:
+> 🚀 Leaving cloud clusters running all weekend burns infrastructure budget for zero output. How do you pause the whole environment without losing data?
+>
+> Master the art of 'rebuild safety' on GKE. This Short explains how cleanly splitting your architecture into a disposable compute layer and a durable external storage layer (GCS, Secret Manager) enables total cluster teardown over weekends to reduce bills to $0, followed by seamless Monday resumption where databases wake up fully populated.
+>
+> 📌 Key Architectural Highlights:
+> • Compute vs. State Decoupling: GKE compute nodes are fully ephemeral; databases stream WALs to persistent object storage.
+> • Automated Weekend Teardown: GitHub Actions destroys compute to halt billing meters completely.
+> • Monday Rebuild Safety: Idempotent Day 1 workflows restore cluster nodes and reconnect to untouched external storage.
+> • Zero Data Vaporization: Guards against accidental persistent disk binding to ephemeral node pools.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Kubernetes #FinOps #CostOptimization #CloudNativePG #GKE #GitHubActions #SRE
+
+#### Category 2: ⚙️ Pluggable CI Engines & Pipeline Automation
+
+##### 9. One Kubernetes Platform, Four CI Engines
+- 🔗 **Link**: [https://www.youtube.com/shorts/KtJjKqAw8Og](https://www.youtube.com/shorts/KtJjKqAw8Og)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:17
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 Can a single cloud-native platform run and interchange 4 major CI engines without rewriting application contracts?
+>
+> In this 60-second architecture demo, we showcase the jenkins-2026 platform on Google Kubernetes Engine (GKE) running 4 pluggable CI engines sharing one 11-stage pipeline contract.
+>
+> 📌 Key Architectural Highlights:
+> • The 4 Pluggable CI Engines: Jenkins (JCasC + Job-DSL), Tekton, GitHub Actions ARC, and Argo Workflows.
+> • Unified Contract: One 11-stage pipeline contract and shared services registry.
+> • Zero-Touch GitOps: Continuous delivery via ArgoCD and Argo Rollouts.
+> • Keyless Security: 100% Workload Identity Federation (Zero JSON service account keys).
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
 > 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
 > #Shorts #Kubernetes #Jenkins #Tekton #GitHubActions #ArgoWorkflows #ArgoCD #Backstage #DevOps #PlatformEngineering #GitOps #GKE
 
-##### 2. How GitOps Reverses Kubernetes Deployments
-- 🔗 **Link**: [https://www.youtube.com/shorts/U4TtIS4k5qs](https://www.youtube.com/shorts/U4TtIS4k5qs)
-- ⏱️ **Duration**: 1:09
+##### 10. How Feature Flags Morph This Golden Path Platform
+- 🔗 **Link**: [https://www.youtube.com/shorts/yqS2oxYoNOc](https://www.youtube.com/shorts/yqS2oxYoNOc)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:17
+- 🏷️ **Domain**: Pluggable CI Engines
 - 📝 **Full Description**:
-> 🔄 How GitOps Reverses Kubernetes Deployments!
+> 🚀 Hard-coding your internal developer platform makes evaluating new tools a nightmare. Here is how feature flags dynamically rewire a live Kubernetes cluster on the fly!
 >
-> Why do traditional CI/CD pipelines fail at enterprise Kubernetes scale? Because pushing changes with `kubectl` or direct CI scripts introduces security risks and configuration drift.
+> This Short demonstrates how the Jenkins 2026 platform leverages GitHub Actions feature flags to hot-swap core architectural paradigms on GKE without modifying application deployment manifests. Learn how flags dynamically swap between 4 CI engines, enable spot compute for scale-to-zero ARC runners, toggle between 4 OpenTelemetry observability backends, inject an AI assistant, and deploy Backstage developer portals.
 >
-> In this 60-second architecture breakdown, see how GitOps reverses the entire deployment paradigm using ArgoCD on Google Kubernetes Engine (GKE):
+> 📌 Key Architectural Highlights:
+> • CI Engine Toggle: Instantly switch between Jenkins, Tekton, Argo Workflows, or GitHub Actions via a single flag.
+> • Spot Compute Optimization: Scale ephemeral ARC build agents to zero for up to 80% cost reduction.
+> • Observability Routing: Route standardized OpenTelemetry traces and logs to OSS, Cloud, AWS, or Azure.
+> • Scaffolder Golden Path: Backstage onboard forms open configuration PRs rather than generating unmanaged repositories.
+> • Keyless Vertex AI: Safely inject Gemini models into telemetry analysis using Workload Identity Federation.
 >
-> ❌ The Old Way (Push Model):
-> • CI holds cluster-admin `kubeconfig` credentials (high security attack surface)
-> • Inbound firewall ports opened to the Kubernetes API server
-> • Silent configuration drift when someone runs manual `kubectl edit`
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
-> ✅ The GitOps Way (Pull Model - 2-Repo Architecture):
-> 1️⃣ CI Never Touches the Cluster: CI builds, scans, and only commits new image tags to the GitOps config repo (`jenkins-2026-gitops-config`).
-> 2️⃣ Pull Over Push: ArgoCD runs inside the cluster, continuously pulling desired state directly from Git.
-> 3️⃣ Zero Cluster Credentials: Zero kubeconfig or cloud admin secrets leaked to external CI runners.
-> 4️⃣ Continuous Drift Detection & Self-Healing: Out-of-sync cluster resources are automatically reconciled back to Git's truth.
-> 5️⃣ Progressive Delivery: Argo Rollouts executes zero-downtime canary & blue-green rollouts with automated metric analysis and instant rollbacks.
+> #Shorts #FeatureFlags #DevOps #CI_CD #Kubernetes #GitHubActions #PlatformEngineering #Jenkins2026
+
+##### 11. Modern Jenkins: The Three Layer Hybrid Pipeline
+- 🔗 **Link**: [https://www.youtube.com/shorts/dNUzh7A8LEY](https://www.youtube.com/shorts/dNUzh7A8LEY)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:25
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 How do you stop enterprise Jenkins pipelines from degenerating into unmaintainable Groovy spaghetti code? Use the 3-layer hybrid architecture!
 >
-> 👇 Explore the Production Code & 2-Repo Architecture:
-> 📁 Infrastructure Repo: https://github.com/nubenetes/jenkins-2026
-> 📦 GitOps Config Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+> Avoid the brittle 'God Jenkinsfile' anti-pattern. This Short outlines the 3-layer hybrid Jenkins model: Layer 1 (Job-DSL seed jobs generate standardized pipelines), Layer 2 (Declarative pipeline shells define stage contracts), and Layer 3 (Scripted Groovy shared libraries execute modular steps like Docker builds and test suites).
+>
+> 📌 Key Architectural Highlights:
+> • Layer 1 - Job-DSL Generation: Automatically provisions Jenkins jobs from declarative service definitions.
+> • Layer 2 - Declarative Pipeline Shells: Enforces uniform stage structure (compile, scan, package, deploy).
+> • Layer 3 - Scripted Shared Libraries: Encapsulates heavy execution logic in reusable Groovy modules.
+> • Eliminating Spaghetti Code: Keeps individual microservice Jenkinsfiles lean, clean, and easily auditable.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Jenkins #PipelineAsCode #JobDSL #Groovy #DevOps #CI_CD #JCasC
+
+##### 12. Dynamic Branch Tracking: Testing Jenkins Pipelines Safely
+- 🔗 **Link**: [https://www.youtube.com/shorts/LO-yLAWNdWk](https://www.youtube.com/shorts/LO-yLAWNdWk)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:08
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 Testing edits to shared CI/CD pipelines usually risks breaking production builds for the entire team. Here is how to test pipelines safely in total isolation!
+>
+> Learn how Dynamic Branch Tracking allows developers to test pipeline modifications without merging to main. Launching an on-demand temporary cluster automatically detects the active Git feature branch and injects it into the CI startup configuration, ensuring Jenkins executes unmerged pipeline code in complete isolation.
+>
+> 📌 Key Architectural Highlights:
+> • The Shared-Pipeline Dilemma: Testing pipeline code on main risks halting deployments across all teams.
+> • On-Demand Temporary Clusters: Developers launch isolated GKE environments directly from feature branches.
+> • Automatic Branch Injection: Cluster bootstrap detects feature branches and configures JCasC to pull matching code.
+> • Production Safety: Pipeline modifications are fully tested before opening pull requests to the platform repository.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Jenkins #DevOps #Testing #BranchTracking #GKE #CI_CD #JCasC
+
+##### 13. How Tekton and ArgoCD Isolate Deployments
+- 🔗 **Link**: [https://www.youtube.com/shorts/Ebcarw910iI](https://www.youtube.com/shorts/Ebcarw910iI)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:08
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 Traditional CI servers require dangerous cluster-admin keys to deploy code. Here is how Tekton and ArgoCD isolate deployments with zero cluster keys!
+>
+> Learn how cloud-native Tekton pipelines build, test, and containerize applications with zero cluster deployment rights. Instead of running kubectl apply, Tekton commits updated image tags to a secondary GitOps repository, where ArgoCD independently pulls and reconciles changes into the GKE cluster.
+>
+> 📌 Key Architectural Highlights:
+> • Zero Cluster-Write Privileges: Tekton build pods have zero administrative access to the live cluster.
+> • Git as Architectural Firewall: Container tags are written exclusively to a separate GitOps configuration repo.
+> • In-Cluster Convergence: ArgoCD pulls configuration updates from inside the cluster security boundary.
+> • Blast-Radius Reduction: A compromised CI runner gains access only to a text commit, not production credentials.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Tekton #ArgoCD #GitOps #Kubernetes #DevOps #Security #CloudNative
+
+##### 14. How Actions Runner Controller Secures CI CD
+- 🔗 **Link**: [https://www.youtube.com/shorts/x_cuaD5WKbE](https://www.youtube.com/shorts/x_cuaD5WKbE)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:09
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 Static CI build agents are a major security risk and cost sink. Here is how Actions Runner Controller (ARC) runs ephemeral, single-use runners on Kubernetes!
+>
+> See how Actions Runner Controller (ARC) spins up single-use, isolated GitHub Actions runner pods on GKE Spot instances. Each runner authenticates via Workload Identity Federation, executes builds, updates the GitOps repository, and is immediately terminated—leaving zero persistent attack surface.
+>
+> 📌 Key Architectural Highlights:
+> • Ephemeral Single-Use Compute: Pods scale from zero on webhook demand and self-destruct after each job.
+> • Spot Instance Cost Savings: Massive compute discount leveraging GKE Spot node auto-provisioning.
+> • Keyless OIDC Authentication: Workload Identity Federation eliminates stored cloud credentials.
+> • No Cluster Admin Rights: Runners update Git tags only; ArgoCD handles live deployment.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #GitHubActions #ARC #Kubernetes #SpotInstances #DevOps #FinOps #ZeroTrust
+
+##### 15. Inside a Modern Argo Workflows Pipeline
+- 🔗 **Link**: [https://www.youtube.com/shorts/4wepJdUzD0A](https://www.youtube.com/shorts/4wepJdUzD0A)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:05
+- 🏷️ **Domain**: Pluggable CI Engines
+- 📝 **Full Description**:
+> 🚀 How do you orchestrate a multi-stage CI/CD pipeline on Kubernetes without giving the workflow master cluster keys?
+>
+> Explore event-driven CI/CD using Argo Events and Argo Workflows. Watch a Git commit trigger an 11-stage Directed Acyclic Graph (DAG) pipeline that compiles, scans, and packages microservices, keylessly updates GitOps configuration, and automatically validates live performance with an integrated k6 traffic engine.
+>
+> 📌 Key Architectural Highlights:
+> • Event-Driven DAG Orchestration: Argo Events triggers parallelized, dependency-managed workflow stages.
+> • Keyless Execution via WIF: Builds authenticate to cloud registries without stored service account secrets.
+> • IAP-Secured Web UI: The Argo Server interface is protected behind Google Identity-Aware Proxy.
+> • Continuous Verification: Automated k6 traffic tests stress-test the live app and stream performance data to Grafana.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #ArgoWorkflows #ArgoCD #Kubernetes #DevOps #CI_CD #DAG #GoogleIAP
+
+#### Category 3: 🔄 Two-Repo GitOps Continuous Delivery & Progressive Rollouts
+
+##### 16. Inside a Modern Two Repo GitOps Architecture
+- 🔗 **Link**: [https://www.youtube.com/shorts/23Ek_Yhr4mg](https://www.youtube.com/shorts/23Ek_Yhr4mg)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:10
+- 🏷️ **Domain**: GitOps & Progressive Delivery
+- 📝 **Full Description**:
+> 🚀 Tired of untangling infrastructure scripts from application code? Here is why the modern enterprise standard requires a two-repo GitOps architecture!
+>
+> Break down the structural separation between the Human-Reviewed Infrastructure Repository (jenkins-2026) and the Machine-Managed Configuration Repository (jenkins-2026-gitops-config). Learn why disabling pull requests on the machine repo is essential for automated CI pipelines while maintaining an immutable audit trail.
+>
+> 📌 Key Architectural Highlights:
+> • Human Repository (jenkins-2026): Bootstraps cluster, platform operators, and pluggable CI engines via PR review.
+> • Machine Repository (jenkins-2026-gitops-config): Receives automated image tag commits directly from CI engines.
+> • Deadlock Prevention: Bypassing human PR requirements on the machine repo ensures continuous flow.
+> • Audit Integrity: Branch protections block force-pushes, preserving a complete Git audit log of all changes.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #GitOps #TwoRepo #ArgoCD #Kubernetes #DevOps #PlatformEngineering #Architecture
+
+##### 17. How GitOps Reverses Kubernetes Deployments
+- 🔗 **Link**: [https://www.youtube.com/shorts/U4TtIS4k5qs](https://www.youtube.com/shorts/U4TtIS4k5qs)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:09
+- 🏷️ **Domain**: GitOps & Progressive Delivery
+- 📝 **Full Description**:
+> 🚀 Why do traditional CI/CD pipelines fail at enterprise Kubernetes scale? Because pushing changes with kubectl or direct CI scripts introduces security risks and configuration drift.
+>
+> In this 60-second architecture breakdown, see how GitOps reverses the entire deployment paradigm using ArgoCD on Google Kubernetes Engine (GKE), comparing the old push model against the two-repo pull architecture.
+>
+> 📌 Key Architectural Highlights:
+> • CI Never Touches the Cluster: CI builds, scans, and only commits new image tags to the GitOps config repo.
+> • Pull Over Push: ArgoCD runs inside the cluster, continuously pulling desired state directly from Git.
+> • Zero Cluster Credentials: Zero kubeconfig or cloud admin secrets leaked to external CI runners.
+> • Progressive Delivery: Argo Rollouts executes zero-downtime canary & blue-green rollouts with instant rollbacks.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
 > #Shorts #GitOps #Kubernetes #ArgoCD #DevOps #CloudNative #PlatformEngineering #Jenkins #ArgoRollouts #GKE #K8s #Security
 
-##### 3. Routing Internal URLs With Service Mesh
-- 🔗 **Link**: [https://www.youtube.com/shorts/go_sCgyASe4](https://www.youtube.com/shorts/go_sCgyASe4)
-- ⏱️ **Duration**: 1:17
+##### 18. How GitOps Makes CI Replays Safe
+- 🔗 **Link**: [https://www.youtube.com/shorts/lxSvdeUuVK4](https://www.youtube.com/shorts/lxSvdeUuVK4)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:13
+- 🏷️ **Domain**: GitOps & Progressive Delivery
 - 📝 **Full Description**:
-> 🕸️ Routing Internal URLs With a Service Mesh (No DNS Hacks Needed!)
+> 🚀 What happens when a cheap Spot CI server crashes mid-deployment? Here is why GitOps makes replaying failed pipelines 100% safe!
 >
-> What happens when your internal Developer Portal tries to call a backend service using its public URL? Does it have to cross the public internet or require messy DNS spoofing?
+> Direct CI deployments to live servers risk leaving applications broken and half-deployed if the agent crashes. This Short explains how the GitOps architectural firewall guarantees safe pipeline retries: Jenkins only writes image tags to a configuration repo, allowing ArgoCD to converge cluster state idempotently with zero conflicting commands.
 >
-> In this 75-second architectural walkthrough (powered by Gemini NotebookLM), discover how an Envoy-based Service Mesh solves the internal URL routing problem cleanly at Layer 7:
+> 📌 Key Architectural Highlights:
+> • The Direct-Deploy Anti-Pattern: Mid-flight pipeline crashes leave live servers in broken, undefined states.
+> • GitOps Architectural Firewall: CI runners are strictly blocked from executing commands against live clusters.
+> • Safe Job Retries: Replaying a failed job simply generates and writes a fresh container tag to Git.
+> • Idempotent Convergence: In-cluster ArgoCD detects the valid tag and synchronizes state seamlessly.
 >
-> ❌ The Old Dilemmas:
-> • Hairpinning across the public internet (adds latency & cloud NAT/egress costs)
-> • Spoofing cluster CoreDNS with fake records (fragile, creates maintenance debt & Split-Brain DNS risks)
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
-> ⚡ The Service Mesh Way (Envoy Sidecar Layer 7 Magic):
-> 1️⃣ Transparent Interception: An Envoy proxy sits beside your app container, intercepting outbound traffic at Layer 7.
-> 2️⃣ Header Inspection: Envoy reads the HTTP `Host` header and URL path before the request ever leaves the pod.
-> 3️⃣ Dynamic In-Cluster Rerouting: Instead of sending packets to the public internet IP, Envoy instantly rewrites the destination to the internal Kubernetes Service (`svc.cluster.local`).
-> 4️⃣ Zero DNS Maintenance: Not a single custom Corefile or DNS record needs to be created or maintained!
-> 5️⃣ Secure & Instant: Your developer portal talks to internal CI/CD engines and backend APIs with zero-trust encryption and sub-millisecond latency.
->
-> 👇 Explore the Production Architectures & Code:
-> 📁 Kubernetes Golden Path IDP (Backstage & CI Engines): https://github.com/nubenetes/jenkins-2026
-> 📁 Ingress & Internal FQDN Routing PoC: https://github.com/nubenetes/traefik-fqdn-management-poc-openshift-aws
-> 📰 Comparative Deep Dive on LinkedIn: https://www.linkedin.com/pulse/traefik-proxy-v3-vs-kubernetes-gateway-api-en-red-hat-i%C3%B1aki-fernandez-xt9ie/
->
-> #Shorts #ServiceMesh #EnvoyProxy #Kubernetes #DevOps #CloudNative #PlatformEngineering #Backstage #Istio #Networking #Layer7 #ZeroTrust #NotebookLM #Gemini
+> #Shorts #GitOps #ArgoCD #Jenkins #DevOps #Kubernetes #FaultTolerance #SRE
 
-##### 4. How Split Brain DNS Keeps Traffic Hidden
-- 🔗 **Link**: [https://www.youtube.com/shorts/moT_HjQsuF4](https://www.youtube.com/shorts/moT_HjQsuF4)
-- ⏱️ **Duration**: 1:09
+##### 19. Scaling GitOps with ArgoCD ApplicationSets
+- 🔗 **Link**: [https://www.youtube.com/shorts/jjtTNG0sTWU](https://www.youtube.com/shorts/jjtTNG0sTWU)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:19
+- 🏷️ **Domain**: GitOps & Progressive Delivery
 - 📝 **Full Description**:
-> 🌐 How Split-Brain DNS Keeps Enterprise Traffic Hidden!
+> 🚀 Managing hundreds of Kubernetes applications by hand is impossible. Here is how to scale GitOps effortlessly using ArgoCD ApplicationSets and Rollouts!
 >
-> Did you know two users can request the exact same URL and take two completely different network paths?
+> Explore advanced GitOps fleet automation. Learn how the 'app-of-apps' pattern deploys entire platforms from a single root manifest, how ApplicationSets dynamically spin up high-availability production tiers vs. lean development tiers based on Git branches, and how Argo Rollouts delivers canary traffic splitting via GKE Gateway API without sidecar meshes.
 >
-> In this 60-second animated explainer (powered by Gemini NotebookLM), discover how Split-Brain (Split-Horizon) DNS protects enterprise infrastructure and accelerates developer workflows:
+> 📌 Key Architectural Highlights:
+> • App-of-Apps Pattern: A single root manifest triggers cascading deployments of all platform services.
+> • Dynamic ApplicationSets: Generates environments automatically mapped to Git branch topology.
+> • Sidecar-Free Progressive Delivery: Argo Rollouts manages canary traffic bleeding directly through GKE Gateway API.
+> • Hands-Off Operations: A single Git commit provisions infrastructure, deploys apps, and routes live traffic.
 >
-> 🌍 Outside Users (Public Internet):
-> • Request `portal.company.com`
-> • Public DNS routes traffic to the perimeter firewall & public load balancer
-> • Strict security inspection, public TLS termination & WAF filtering
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
-> 🏢 Inside Developers & Services (Private Network / Kubernetes):
-> • Request the EXACT same URL `portal.company.com`
-> • Internal DNS resolves directly to a private IP / internal ClusterIP
-> • Traffic NEVER touches the public internet: zero hairpinning, zero data egress fees, and sub-millisecond latency
+> #Shorts #ArgoCD #ApplicationSets #ArgoRollouts #Canary #GitOps #Kubernetes #GatewayAPI
+
+##### 20. How Two Repo GitOps Protects Production
+- 🔗 **Link**: [https://www.youtube.com/shorts/lTpkd03oxmM](https://www.youtube.com/shorts/lTpkd03oxmM)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:21
+- 🏷️ **Domain**: GitOps & Progressive Delivery
+- 📝 **Full Description**:
+> 🚀 When AI coding agents build Kubernetes platforms, how do you deploy updates without handing over your production keys? Use two-repo GitOps!
 >
-> 🚀 Why It Matters in Modern DevOps & Platform Engineering:
-> • Developer portals (like Spotify Backstage) and CI/CD engines communicate instantly
-> • Eliminates cloud NAT gateway bottlenecks and bandwidth costs
-> • Core architectural pattern behind Kubernetes Split-Horizon Ingress and Zero-Trust networks
+> Protect production systems against rogue AI modifications and build runner compromises. This Short breaks down why separating human infrastructure code from a machine-to-machine GitOps repository prevents build systems from accessing live cluster credentials while maintaining a complete, tamper-proof audit trail.
 >
-> 👇 Deep Dive into Real-World Split-Horizon Architecture & Code:
-> 📁 OpenShift Ingress & Split-Horizon PoC: https://github.com/nubenetes/traefik-fqdn-management-poc-openshift-aws
-> 📁 Kubernetes Golden Path IDP: https://github.com/nubenetes/jenkins-2026
-> 📰 Architectural Breakdown on LinkedIn: https://www.linkedin.com/pulse/traefik-proxy-v3-vs-kubernetes-gateway-api-en-red-hat-i%C3%B1aki-fernandez-xt9ie/
+> 📌 Key Architectural Highlights:
+> • Production Key Protection: CI runners and AI agents are physically prevented from accessing cluster credentials.
+> • Machine-to-Machine Repo: Direct pushes are permitted for automated tag updates while force-deletions are blocked.
+> • Pull-Based Reconciliation: In-cluster ArgoCD detects image tag changes and pulls updates safely across the firewall.
+> • Immutable Audit Trail: Every automated change generates an immutable Git commit history.
 >
-> #Shorts #DNS #SplitBrainDNS #SplitHorizon #Networking #Kubernetes #DevOps #CloudNative #PlatformEngineering #CyberSecurity #ZeroTrust #NotebookLM #Gemini
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #GitOps #AICoding #Security #DevOps #ArgoCD #Kubernetes #TwoRepo
+
+#### Category 4: 🔒 Zero-Trust Security, Identity & Cloud Networking
+
+##### 21. Solving the IaC Bootstrap Paradox
+- 🔗 **Link**: [https://www.youtube.com/shorts/3Ck2Eg1wfpc](https://www.youtube.com/shorts/3Ck2Eg1wfpc)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:19
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 How do you automate cloud infrastructure with Terraform when the pipeline needs storage and identity that don't exist yet?
+>
+> Solve the classic 'bootstrap paradox' in cloud automation. This Short demonstrates how running a single local initialization script establishes the initial root of trust (GCS bucket + Workload Identity Federation pool), enabling GitHub Actions to take over and provision the platform keylessly without static passwords.
+>
+> 📌 Key Architectural Highlights:
+> • The Chicken-and-Egg Dilemma: Terraform needs remote state and cloud credentials before cloud resources exist.
+> • Single-Run Trust Setup: A local script establishes state storage and OIDC trust policies once.
+> • Permanent Elimination of Service Account Keys: Zero persistent JSON credentials stored in GitHub Secrets.
+> • Seamless CI Handoff: GitHub Actions streams Terraform workflows across the keyless WIF bridge.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Terraform #Bootstrap #WIF #GoogleCloud #DevOps #Security #InfrastructureAsCode
+
+##### 22. How Keyless Cloud Authentication Works
+- 🔗 **Link**: [https://www.youtube.com/shorts/djvxDx8bG40](https://www.youtube.com/shorts/djvxDx8bG40)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:21
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 Storing permanent cloud passwords in deployment servers is an open door for attackers. Here is how keyless Workload Identity Federation works!
+>
+> Discover how Workload Identity Federation (WIF) eliminates static JSON service account keys. GitHub Actions workflows generate short-lived OIDC tokens verified cryptographically by Google Cloud, issuing temporary access tokens that authorize automated security scans and allow External Secrets Operator (ESO) to sync cloud secrets keylessly.
+>
+> 📌 Key Architectural Highlights:
+> • Permanent Keys Deprecated: Zero static JSON credentials stored in GitHub Secrets or server filesystems.
+> • Cryptographic OIDC Handshake: Cloud verifies repository identity and branch rules before granting access.
+> • Short-Lived Visitor Passes: Ephemeral access tokens expire automatically once the deployment step completes.
+> • External Secrets Operator (ESO): Syncs database passwords directly from GCP Secret Manager into Kubernetes secrets.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #ZeroTrust #OIDC #WorkloadIdentity #ESO #DevOps #Security #Kubernetes
+
+##### 23. Inside a Modern Golden Path DevSecOps Pipeline
+- 🔗 **Link**: [https://www.youtube.com/shorts/eCPhd1fxvLQ](https://www.youtube.com/shorts/eCPhd1fxvLQ)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:17
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 Shipping code to production safely shouldn't lock you into one proprietary toolset. Here is a zero-trust, multi-layer DevSecOps assembly line!
+>
+> Delve into the 11-stage security gauntlet that guards the GKE Golden Path IDP. Static code analysis (Semgrep), deep semantic SAST (CodeQL), and container/IaC vulnerability scanning (Trivy) gate the pipeline before any artifact is pushed. Incorporates GitOps physical separation and GKE Binary Authorization to block unverified containers at admission.
+>
+> 📌 Key Architectural Highlights:
+> • Standardized 11-Stage Contract: Uniform execution across Jenkins, Tekton, GitHub Actions, and Argo Workflows.
+> • Automated Security Gates: Pipeline immediately halts on critical SAST, SCA, or CVE threshold violations.
+> • SARIF Telemetry Consolidation: Unified vulnerability reporting surfaced directly in developer consoles.
+> • Admission Gate Bouncer: GKE Binary Authorization cryptographically blocks unsigned container deployments.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #DevSecOps #Semgrep #CodeQL #Trivy #BinaryAuthorization #Security #Kubernetes
+
+##### 24. Routing Internal URLs With Service Mesh
+- 🔗 **Link**: [https://www.youtube.com/shorts/go_sCgyASe4](https://www.youtube.com/shorts/go_sCgyASe4)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:17
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 What happens when your internal Developer Portal tries to call a backend service using its public URL? Does it have to cross the public internet or require messy DNS spoofing?
+>
+> In this 75-second architectural walkthrough, discover how an Envoy-based Service Mesh solves the internal URL routing problem cleanly at Layer 7 without fragile CoreDNS spoofing.
+>
+> 📌 Key Architectural Highlights:
+> • Transparent Interception: An Envoy proxy intercepts outbound traffic at Layer 7.
+> • Header Inspection: Reads the HTTP Host header before requests leave the pod.
+> • Dynamic Rerouting: Rewrites destination to internal Kubernetes Service (svc.cluster.local).
+> • Zero DNS Maintenance: Eliminates custom Corefile management and Split-Brain DNS risks.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #ServiceMesh #EnvoyProxy #Kubernetes #DevOps #CloudNative #PlatformEngineering #Backstage #Istio #Networking #Layer7 #ZeroTrust
+
+##### 25. How Split Brain DNS Keeps Traffic Hidden
+- 🔗 **Link**: [https://www.youtube.com/shorts/moT_HjQsuF4](https://www.youtube.com/shorts/moT_HjQsuF4)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:09
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 Did you know two users can request the exact same URL and take two completely different network paths?
+>
+> Discover how Split-Brain (Split-Horizon) DNS protects enterprise infrastructure and accelerates developer workflows by isolating external traffic from internal Kubernetes networks.
+>
+> 📌 Key Architectural Highlights:
+> • Outside Users: Public DNS routes traffic to perimeter firewalls and public L7 load balancers with WAF.
+> • Inside Services: Internal DNS resolves directly to private ClusterIPs without hairpinning.
+> • Zero Egress Fees: Eliminates cloud NAT gateway bottlenecks and outbound internet costs.
+> • Fast & Secure: Sub-millisecond communication between Developer Portals and CI engines.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #DNS #SplitBrainDNS #SplitHorizon #Networking #Kubernetes #DevOps #CloudNative #PlatformEngineering #CyberSecurity #ZeroTrust
+
+#### Category 5: 📊 Full-Stack Observability, SRE Alerting & Database Architecture
+
+##### 26. The Ultimate Plug and Play Observability Stack
+- 🔗 **Link**: [https://www.youtube.com/shorts/s0tSsiQMA_Y](https://www.youtube.com/shorts/s0tSsiQMA_Y)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:07
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Debugging microservices across disconnected tabs is an SRE nightmare. Here is how to treat your entire observability stack as plug-and-play code!
+>
+> Explore how the Jenkins 2026 platform eliminates fragmented monitoring silos. By standardizing on OpenTelemetry, a single YAML feature flag routes traces, metrics, and logs to Grafana OSS, Grafana Cloud, AWS, or Azure. Features automated k6 traffic generation to prevent empty dashboards post-deploy and Vertex AI Gemini integration for keyless anomaly detection.
+>
+> 📌 Key Architectural Highlights:
+> • Universal Telemetry Collector: In-cluster OpenTelemetry Collector ingests, enriches, and fans out signals.
+> • Unified Context: Trace IDs permanently link backend logs to server metrics and distributed spans.
+> • Pre-Emptive Traffic Seeding: Parameterized k6 load testing validates telemetry pipelines before user traffic arrives.
+> • Keyless AI Diagnosis: Query telemetry with Vertex AI Gemini without static API key vulnerability.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #OpenTelemetry #Grafana #Observability #k6 #VertexAI #DevOps #SRE
+
+##### 27. How OpenTelemetry Connects System Data
+- 🔗 **Link**: [https://www.youtube.com/shorts/n5f-v8_Ftok](https://www.youtube.com/shorts/n5f-v8_Ftok)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:14
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 How does OpenTelemetry turn millions of scattered logs, metrics, and traces into a single coherent story? Here is how context propagation works!
+>
+> Learn how OpenTelemetry eliminates developer guesswork during distributed microservice outages. An agent injects a unique Trace ID at the HTTP ingress and automatically propagates it across backend calls, stitching logs, metrics, and spans into a single chronological timeline inside Grafana Tempo and Loki.
+>
+> 📌 Key Architectural Highlights:
+> • Automatic Context Propagation: Ingress gateway injects traceparent headers without application code rewrites.
+> • Three-Way Correlation: Trace IDs stamp Loki logs, Tempo traces, and Prometheus metric exemplars.
+> • Reactive Stream Support: Automatic Reactor context propagation preserves trace IDs across WebFlux operators.
+> • Instant Root-Cause Discovery: Pivot seamlessly from a metrics spike directly to the exact failing log line.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #OpenTelemetry #DistributedTracing #Tempo #Loki #Grafana #SRE #Microservices
+
+##### 28. Complete Kubernetes Observability in Grafana
+- 🔗 **Link**: [https://www.youtube.com/shorts/GSC0iamzdjs](https://www.youtube.com/shorts/GSC0iamzdjs)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:20
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Why settle for fragmented monitoring tools? Here is how to correlate CI metrics, microservices RED signals, database health, and frontend RUM into Grafana!
+>
+> See end-to-end observability in action on GKE. This Short demonstrates how OpenTelemetry links CI/CD DORA metrics, microservices RED signals (Rate, Errors, Duration), Tempo distributed traces, Loki logs, JVM heaps, GKE Spot node scaling, CloudNativePG replication, and Grafana Faro frontend RUM into unified Grafana dashboards.
+>
+> 📌 Key Architectural Highlights:
+> • DORA & CI Metrics: Tracks pipeline frequency, lead times, and ArgoCD sync failures.
+> • Microservices RED Signals: Correlates request rates, errors, and duration with Tempo traces and Loki logs.
+> • Infrastructure & DB Health: Monitors GKE Spot node auto-scaling and CloudNativePG streaming replication lag.
+> • Frontend-to-Backend RUM: Grafana Faro captures browser Core Web Vitals and injects trace headers into backend APIs.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Grafana #OpenTelemetry #DORA #REDMetrics #FrontendRUM #Kubernetes #SRE
+
+##### 29. Inside a Modern Kubernetes Observability Stack
+- 🔗 **Link**: [https://www.youtube.com/shorts/9j31eNTsN6E](https://www.youtube.com/shorts/9j31eNTsN6E)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:15
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Tired of bloated monitoring agents consuming half your cluster resources? Here is how a dual-tier OpenTelemetry collector topology unifies all signals!
+>
+> A deep dive into modern Kubernetes observability architecture on GKE. Explores the dual-tier OpenTelemetry model combining a lightweight DaemonSet for node log streaming with a centralized Gateway deployment utilizing span_metrics and service_graph connectors to auto-generate RED metrics and service maps directly from traces.
+>
+> 📌 Key Architectural Highlights:
+> • Dual-Tier Collector Topology: DaemonSet handles node stdout log collection; Gateway deployment routes traces and metrics.
+> • Span Metrics Connector: Auto-generates RED metrics (Rate, Errors, Duration) and exemplars directly from span streams.
+> • Service Graph Connector: Builds real-time microservice topology maps in Grafana Tempo without manual configuration.
+> • Optimized Resource Footprint: Replaces multiple proprietary vendor agents with a single, unified OTel pipeline.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Kubernetes #OpenTelemetry #Tempo #Loki #Grafana #Prometheus #Architecture
+
+##### 30. Comparing Four Grafana Deployment Architectures
+- 🔗 **Link**: [https://www.youtube.com/shorts/Z8U2CP5W7Q4](https://www.youtube.com/shorts/Z8U2CP5W7Q4)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:15
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Where should you host your Kubernetes observability data? Here is a breakdown of 4 Grafana deployment models and their architectural trade-offs!
+>
+> Compare 4 Grafana hosting architectures: 1) Grafana Cloud (dropping infra metrics to fit the 15,000 active series free tier cap), 2) Self-Hosted OSS (enabling keyless Vertex AI telemetry queries), 3) Amazon Managed Grafana (strict token constraints requiring deep links), and 4) Azure Managed Grafana (persistent out-of-band workspace setup).
+>
+> 📌 Key Architectural Highlights:
+> • OpenTelemetry Normalization: Data looks identical across all 4 backends thanks to standardized OTLP collection.
+> • Grafana Cloud Quota Optimization: Collector drops high-cardinality infra series to stay within free tier limits.
+> • Self-Hosted OSS AI Integration: In-cluster OSS supports keyless Vertex AI telemetry queries via Workload Identity.
+> • Managed Cloud Trade-Offs: Explores authentication differences between AWS IAM tokens and Azure Managed Grafana.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Grafana #GrafanaCloud #AWS #Azure #Observability #OpenTelemetry #MultiCloud
+
+##### 31. Inside the Jenkins 2026 Grafana Alert Strategy
+- 🔗 **Link**: [https://www.youtube.com/shorts/33hTEro0O78](https://www.youtube.com/shorts/33hTEro0O78)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:23
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Why do monitoring alerts always fire after an outage instead of before? Here is the 6-rule production alert strategy guarding the Jenkins 2026 platform!
+>
+> Examine the 6 standardized Grafana alert rules protecting the GKE Golden Path platform. Learn how proactive rules detect high JVM heap usage (>80%) before OOMKills occur, flag OpenTelemetry Collector memory pressure (>70%) to prevent silent metric loss, and monitor ArgoCD sync degradation and CloudNativePG replication lag.
+>
+> 📌 Key Architectural Highlights:
+> • Rule 1 & 2 - Workload Health: Alerts on unready pods and degraded ArgoCD application sync states.
+> • Rule 3 - Database Integrity: Detects CloudNativePG streaming replication lag and cluster failover events.
+> • Rule 4 - Microservice RED Spikes: Triggers on elevated HTTP 5xx error rates across API routes.
+> • Rule 5 & 6 - Proactive SRE Guards: Warns on high JVM heap (>80%) and OTel Collector memory pressure (>70%).
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Grafana #Alerting #SRE #Prometheus #ArgoCD #CloudNativePG #DevOps
+
+##### 32. How Parameterized k6 Testing Closes the CI CD Loop
+- 🔗 **Link**: [https://www.youtube.com/shorts/yG5DiLG2Cus](https://www.youtube.com/shorts/yG5DiLG2Cus)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:19
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Why do observability dashboards stay empty right after a deployment? Here is how parameterized k6 testing closes the CI/CD feedback loop!
+>
+> Discover the 'k6 SIM contract'. A single universal JavaScript test morphs into 6 distinct workload profiles (spike, soak, smoke, stress, breakpoint, average) via environment variables. Executed automatically post-deployment across any CI engine, it proves microservices can handle real traffic and lights up Grafana dashboards instantly.
+>
+> 📌 Key Architectural Highlights:
+> • Eliminating Empty Dashboards: Synthetic traffic validates system health before real users arrive.
+> • The k6 SIM Contract: One script dynamically adopts 6 workload profiles based on pipeline input variables.
+> • Engine-Agnostic Execution: Runs identically under Jenkins, GitHub Actions, Tekton, or Argo Workflows.
+> • Direct Metrics Streaming: Performance telemetry streams directly to Prometheus/Mimir for instant SLO validation.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #k6 #LoadTesting #SyntheticTraffic #Observability #DevOps #CI_CD #Grafana
+
+##### 33. Inside the Golden Path Database Architecture
+- 🔗 **Link**: [https://www.youtube.com/shorts/Xp5zHzLiadk](https://www.youtube.com/shorts/Xp5zHzLiadk)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:25
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🚀 Running databases on Kubernetes is dangerous if done wrong. Here is how CloudNativePG delivers automated high availability and disaster recovery!
+>
+> Master stateful data architecture on Kubernetes. This Short breaks down how CloudNativePG manages PostgreSQL clusters on GKE with 3 multi-zone synchronized instances, automated failover, pgBouncer connection pooling, continuous WAL archiving to Google Cloud Storage (GCS), and an environment toggle for single-instance dev savings.
+>
+> 📌 Key Architectural Highlights:
+> • Multi-Zone High Availability: 3 synchronized PostgreSQL pods spread across availability zones with auto-failover.
+> • Connection Pooling: Integrated pgBouncer pools connections to maximize database throughput under load.
+> • Automated WAL Backups: Continuous write-ahead log streaming to GCS buckets ensures zero-data-loss disaster recovery.
+> • Environment Cost Toggle: Flip a flag to run single-instance PostgreSQL in development and 3-node HA in production.
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #PostgreSQL #CloudNativePG #Kubernetes #Databases #HighAvailability #GKE #FinOps
 
 </details>
 
