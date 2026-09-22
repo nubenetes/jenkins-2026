@@ -1630,11 +1630,11 @@ Below are the direct links and full descriptions, organized by original audio la
 </details>
 
 <details>
-<summary>📂 <strong>Architecture Video Shorts (33 Shorts)</strong></summary>
+<summary>📂 <strong>Architecture Video Shorts (31 Shorts)</strong></summary>
 
 <br/>
 
-A complete library of **33 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
+A complete library of **31 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
 
 ### 📑 Quick Index Matrix (Ordered by Criteria)
 
@@ -1663,16 +1663,14 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 | 21 | [Solving the IaC Bootstrap Paradox](https://www.youtube.com/shorts/3Ck2Eg1wfpc) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/3Ck2Eg1wfpc) |
 | 22 | [How Keyless Cloud Authentication Works](https://www.youtube.com/shorts/djvxDx8bG40) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:21` | [▶️ Watch](https://www.youtube.com/shorts/djvxDx8bG40) |
 | 23 | [Inside a Modern Golden Path DevSecOps Pipeline](https://www.youtube.com/shorts/eCPhd1fxvLQ) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/eCPhd1fxvLQ) |
-| 24 | [Routing Internal URLs With Service Mesh](https://www.youtube.com/shorts/go_sCgyASe4) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:17` | [▶️ Watch](https://www.youtube.com/shorts/go_sCgyASe4) |
-| 25 | [How Split Brain DNS Keeps Traffic Hidden](https://www.youtube.com/shorts/moT_HjQsuF4) | Zero-Trust Security & Identity | 🇬🇧 EN | `1:09` | [▶️ Watch](https://www.youtube.com/shorts/moT_HjQsuF4) |
-| 26 | [The Ultimate Plug and Play Observability Stack](https://www.youtube.com/shorts/s0tSsiQMA_Y) | Observability & Databases | 🇬🇧 EN | `1:07` | [▶️ Watch](https://www.youtube.com/shorts/s0tSsiQMA_Y) |
-| 27 | [How OpenTelemetry Connects System Data](https://www.youtube.com/shorts/n5f-v8_Ftok) | Observability & Databases | 🇬🇧 EN | `1:14` | [▶️ Watch](https://www.youtube.com/shorts/n5f-v8_Ftok) |
-| 28 | [Complete Kubernetes Observability in Grafana](https://www.youtube.com/shorts/GSC0iamzdjs) | Observability & Databases | 🇬🇧 EN | `1:20` | [▶️ Watch](https://www.youtube.com/shorts/GSC0iamzdjs) |
-| 29 | [Inside a Modern Kubernetes Observability Stack](https://www.youtube.com/shorts/9j31eNTsN6E) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/9j31eNTsN6E) |
-| 30 | [Comparing Four Grafana Deployment Architectures](https://www.youtube.com/shorts/Z8U2CP5W7Q4) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/Z8U2CP5W7Q4) |
-| 31 | [Inside the Jenkins 2026 Grafana Alert Strategy](https://www.youtube.com/shorts/33hTEro0O78) | Observability & Databases | 🇬🇧 EN | `1:23` | [▶️ Watch](https://www.youtube.com/shorts/33hTEro0O78) |
-| 32 | [How Parameterized k6 Testing Closes the CI CD Loop](https://www.youtube.com/shorts/yG5DiLG2Cus) | Observability & Databases | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/yG5DiLG2Cus) |
-| 33 | [Inside the Golden Path Database Architecture](https://www.youtube.com/shorts/Xp5zHzLiadk) | Observability & Databases | 🇬🇧 EN | `1:25` | [▶️ Watch](https://www.youtube.com/shorts/Xp5zHzLiadk) |
+| 24 | [The Ultimate Plug and Play Observability Stack](https://www.youtube.com/shorts/s0tSsiQMA_Y) | Observability & Databases | 🇬🇧 EN | `1:07` | [▶️ Watch](https://www.youtube.com/shorts/s0tSsiQMA_Y) |
+| 25 | [How OpenTelemetry Connects System Data](https://www.youtube.com/shorts/n5f-v8_Ftok) | Observability & Databases | 🇬🇧 EN | `1:14` | [▶️ Watch](https://www.youtube.com/shorts/n5f-v8_Ftok) |
+| 26 | [Complete Kubernetes Observability in Grafana](https://www.youtube.com/shorts/GSC0iamzdjs) | Observability & Databases | 🇬🇧 EN | `1:20` | [▶️ Watch](https://www.youtube.com/shorts/GSC0iamzdjs) |
+| 27 | [Inside a Modern Kubernetes Observability Stack](https://www.youtube.com/shorts/9j31eNTsN6E) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/9j31eNTsN6E) |
+| 28 | [Comparing Four Grafana Deployment Architectures](https://www.youtube.com/shorts/Z8U2CP5W7Q4) | Observability & Databases | 🇬🇧 EN | `1:15` | [▶️ Watch](https://www.youtube.com/shorts/Z8U2CP5W7Q4) |
+| 29 | [Inside the Jenkins 2026 Grafana Alert Strategy](https://www.youtube.com/shorts/33hTEro0O78) | Observability & Databases | 🇬🇧 EN | `1:23` | [▶️ Watch](https://www.youtube.com/shorts/33hTEro0O78) |
+| 30 | [How Parameterized k6 Testing Closes the CI CD Loop](https://www.youtube.com/shorts/yG5DiLG2Cus) | Observability & Databases | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/yG5DiLG2Cus) |
+| 31 | [Inside the Golden Path Database Architecture](https://www.youtube.com/shorts/Xp5zHzLiadk) | Observability & Databases | 🇬🇧 EN | `1:25` | [▶️ Watch](https://www.youtube.com/shorts/Xp5zHzLiadk) |
 
 ---
 
@@ -2191,53 +2189,9 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #DevSecOps #Semgrep #CodeQL #Trivy #BinaryAuthorization #Security #Kubernetes
 
-##### 24. Routing Internal URLs With Service Mesh
-- 🔗 **Link**: [https://www.youtube.com/shorts/go_sCgyASe4](https://www.youtube.com/shorts/go_sCgyASe4)
-- 🌐 **Language**: English (Original Audio)
-- ⏱️ **Duration**: 1:17
-- 🏷️ **Domain**: Zero-Trust Security & Identity
-- 📝 **Full Description**:
-> 🚀 What happens when your internal Developer Portal tries to call a backend service using its public URL? Does it have to cross the public internet or require messy DNS spoofing?
->
-> In this 75-second architectural walkthrough, discover how an Envoy-based Service Mesh solves the internal URL routing problem cleanly at Layer 7 without fragile CoreDNS spoofing.
->
-> 📌 Key Architectural Highlights:
-> • Transparent Interception: An Envoy proxy intercepts outbound traffic at Layer 7.
-> • Header Inspection: Reads the HTTP Host header before requests leave the pod.
-> • Dynamic Rerouting: Rewrites destination to internal Kubernetes Service (svc.cluster.local).
-> • Zero DNS Maintenance: Eliminates custom Corefile management and Split-Brain DNS risks.
->
-> 👇 Explore the Full Architecture & Source Code:
-> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
-> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
->
-> #Shorts #ServiceMesh #EnvoyProxy #Kubernetes #DevOps #CloudNative #PlatformEngineering #Backstage #Istio #Networking #Layer7 #ZeroTrust
-
-##### 25. How Split Brain DNS Keeps Traffic Hidden
-- 🔗 **Link**: [https://www.youtube.com/shorts/moT_HjQsuF4](https://www.youtube.com/shorts/moT_HjQsuF4)
-- 🌐 **Language**: English (Original Audio)
-- ⏱️ **Duration**: 1:09
-- 🏷️ **Domain**: Zero-Trust Security & Identity
-- 📝 **Full Description**:
-> 🚀 Did you know two users can request the exact same URL and take two completely different network paths?
->
-> Discover how Split-Brain (Split-Horizon) DNS protects enterprise infrastructure and accelerates developer workflows by isolating external traffic from internal Kubernetes networks.
->
-> 📌 Key Architectural Highlights:
-> • Outside Users: Public DNS routes traffic to perimeter firewalls and public L7 load balancers with WAF.
-> • Inside Services: Internal DNS resolves directly to private ClusterIPs without hairpinning.
-> • Zero Egress Fees: Eliminates cloud NAT gateway bottlenecks and outbound internet costs.
-> • Fast & Secure: Sub-millisecond communication between Developer Portals and CI engines.
->
-> 👇 Explore the Full Architecture & Source Code:
-> 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
-> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
->
-> #Shorts #DNS #SplitBrainDNS #SplitHorizon #Networking #Kubernetes #DevOps #CloudNative #PlatformEngineering #CyberSecurity #ZeroTrust
-
 #### Category 5: 📊 Full-Stack Observability, SRE Alerting & Database Architecture
 
-##### 26. The Ultimate Plug and Play Observability Stack
+##### 24. The Ultimate Plug and Play Observability Stack
 - 🔗 **Link**: [https://www.youtube.com/shorts/s0tSsiQMA_Y](https://www.youtube.com/shorts/s0tSsiQMA_Y)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:07
@@ -2259,7 +2213,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #OpenTelemetry #Grafana #Observability #k6 #VertexAI #DevOps #SRE
 
-##### 27. How OpenTelemetry Connects System Data
+##### 25. How OpenTelemetry Connects System Data
 - 🔗 **Link**: [https://www.youtube.com/shorts/n5f-v8_Ftok](https://www.youtube.com/shorts/n5f-v8_Ftok)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:14
@@ -2281,7 +2235,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #OpenTelemetry #DistributedTracing #Tempo #Loki #Grafana #SRE #Microservices
 
-##### 28. Complete Kubernetes Observability in Grafana
+##### 26. Complete Kubernetes Observability in Grafana
 - 🔗 **Link**: [https://www.youtube.com/shorts/GSC0iamzdjs](https://www.youtube.com/shorts/GSC0iamzdjs)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:20
@@ -2303,7 +2257,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #Grafana #OpenTelemetry #DORA #REDMetrics #FrontendRUM #Kubernetes #SRE
 
-##### 29. Inside a Modern Kubernetes Observability Stack
+##### 27. Inside a Modern Kubernetes Observability Stack
 - 🔗 **Link**: [https://www.youtube.com/shorts/9j31eNTsN6E](https://www.youtube.com/shorts/9j31eNTsN6E)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:15
@@ -2325,7 +2279,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #Kubernetes #OpenTelemetry #Tempo #Loki #Grafana #Prometheus #Architecture
 
-##### 30. Comparing Four Grafana Deployment Architectures
+##### 28. Comparing Four Grafana Deployment Architectures
 - 🔗 **Link**: [https://www.youtube.com/shorts/Z8U2CP5W7Q4](https://www.youtube.com/shorts/Z8U2CP5W7Q4)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:15
@@ -2347,7 +2301,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #Grafana #GrafanaCloud #AWS #Azure #Observability #OpenTelemetry #MultiCloud
 
-##### 31. Inside the Jenkins 2026 Grafana Alert Strategy
+##### 29. Inside the Jenkins 2026 Grafana Alert Strategy
 - 🔗 **Link**: [https://www.youtube.com/shorts/33hTEro0O78](https://www.youtube.com/shorts/33hTEro0O78)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:23
@@ -2369,7 +2323,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #Grafana #Alerting #SRE #Prometheus #ArgoCD #CloudNativePG #DevOps
 
-##### 32. How Parameterized k6 Testing Closes the CI CD Loop
+##### 30. How Parameterized k6 Testing Closes the CI CD Loop
 - 🔗 **Link**: [https://www.youtube.com/shorts/yG5DiLG2Cus](https://www.youtube.com/shorts/yG5DiLG2Cus)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:19
@@ -2391,7 +2345,7 @@ A complete library of **33 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #k6 #LoadTesting #SyntheticTraffic #Observability #DevOps #CI_CD #Grafana
 
-##### 33. Inside the Golden Path Database Architecture
+##### 31. Inside the Golden Path Database Architecture
 - 🔗 **Link**: [https://www.youtube.com/shorts/Xp5zHzLiadk](https://www.youtube.com/shorts/Xp5zHzLiadk)
 - 🌐 **Language**: English (Original Audio)
 - ⏱️ **Duration**: 1:25
