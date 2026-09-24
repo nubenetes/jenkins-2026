@@ -1583,7 +1583,7 @@ Below are the direct links and full descriptions, organized by original audio la
 #### 🇬🇧 Videos in English (Original Audio)
 
 <details>
-<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (2 Videos)</strong></summary>
+<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (5 Videos)</strong></summary>
 
 <br/>
 
@@ -1626,6 +1626,64 @@ Below are the direct links and full descriptions, organized by original audio la
 >
 > ⏱️ Duration: 55:47
 > #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 3. Modernizing Jenkins: Cloud-Native Architecture, JCasC & Job DSL
+- 🔗 **Link**: [https://www.youtube.com/watch?v=_7vtWcNp7xQ](https://www.youtube.com/watch?v=_7vtWcNp7xQ)
+- ⏱️ **Duration**: 7:55
+- 📝 **Full Description**:
+> 🚀 Architectural deep dive into transforming Jenkins from a legacy pet server into a modular, cloud-native powerhouse within the Jenkins 2026 reference architecture.
+>
+> 📌 Core Architectural Themes:
+> • The Three Distinct DSL Layers: JCasC (System Config) vs Job DSL (Seed Job Pipeline Generation) vs Pipeline DSL (Runtime Execution).
+> • The Master Seed Job Pattern: Decoupling pipeline generation from unit test execution.
+> • Ephemeral Kubernetes agent pods on demand rather than static, unmanaged builder nodes.
+> • Eliminating configuration drift across stable HA and lean develop tiers.
+>
+> 🔗 Project Documentation & Reference Code:
+> • Platform IDP: https://github.com/nubenetes/jenkins-2026
+> • GitOps Target State: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> ⏱️ Duration: 7:55
+> #Jenkins #DevOps #CloudNative #Kubernetes #GitOps #PlatformEngineering #CICD #JCasC #JobDSL
+
+##### 4. Two Repo GitOps with ArgoCD: Decoupling CI from CD
+- 🔗 **Link**: [https://www.youtube.com/watch?v=6cPI6jt3abw](https://www.youtube.com/watch?v=6cPI6jt3abw)
+- ⏱️ **Duration**: 10:28
+- 📝 **Full Description**:
+> 🚀 In-depth architectural analysis of the Two-Repo GitOps state machine, explaining why separating Application Code from Desired Infrastructure State is crucial for enterprise security and stability.
+>
+> 📌 Core Discussion Points:
+> • The Push vs. Pull Dilemma: Why direct CI-to-cluster push creates massive security vulnerabilities.
+> • The Decoupled Two-Repo Pattern: Repository 1 (App Source Code + CI) strictly separated from Repository 2 (GitOps Desired State + Manifests).
+> • The GitOps Handoff: Build pipelines only commit image tag bumps to the GitOps config repo.
+> • Scaling with ArgoCD 3.5+ ApplicationSets: Dynamically templating multi-environment clusters using Git and Matrix generators with dynamic branch tracking.
+> • Blast Radius Containment: Keeping production Kubernetes clusters safe from pipeline compromises.
+>
+> 🔗 Project Documentation & Reference Code:
+> • GitOps Target State: https://github.com/nubenetes/jenkins-2026-gitops-config
+> • Pure GitOps Multi-Cluster Blueprint: https://github.com/nubenetes/jenkins-without-git-parameter
+> • Platform Architecture: https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 10:28
+> #GitOps #ArgoCD #Kubernetes #CICD #DevSecOps #PlatformEngineering #TwoRepoGitOps #CloudNative
+
+##### 5. Kubernetes Golden Path Observability: OpenTelemetry & Grafana
+- 🔗 **Link**: [https://www.youtube.com/watch?v=1dPaBDXSHmw](https://www.youtube.com/watch?v=1dPaBDXSHmw)
+- ⏱️ **Duration**: 8:34
+- 📝 **Full Description**:
+> 🚀 Deep dive into the observability architecture behind the Jenkins 2026 GKE Golden Path IDP.
+>
+> 📌 Core Discussion Points:
+> • Unified Telemetry with OpenTelemetry (OTel): Auto-instrumentation across microservices ensuring traces, metrics, and logs link together seamlessly.
+> • Multi-Backend Grafana Strategy: Flexible visualization routing across Grafana Cloud, OSS Grafana, Managed Azure Grafana, and AWS Grafana.
+> • GKE Node Auto-Provisioning & Spot CI: Real-time cost governance dashboards demonstrating how heavy CI compute spins up on Spot instances during builds and scales down to zero when idle.
+> • Proactive Alerting & Correlation: Trace-to-log jumps for instant root cause analysis.
+>
+> 🔗 Project Documentation & Reference Code:
+> • https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 8:34
+> #Kubernetes #Observability #OpenTelemetry #Grafana #Jenkins #GKE #DevOps #PlatformEngineering #CloudNative
 
 </details>
 
