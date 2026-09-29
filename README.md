@@ -237,6 +237,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
   - [3.1. Technical Infographics Catalog](#31-technical-infographics-catalog)
   - [3.2. Live Platform Screenshots](#32-live-platform-screenshots)
   - [3.3. Project Media & External Resources](#33-project-media--external-resources)
+  - [3.4. Video Walkthroughs, Technical Podcasts & Shorts (YouTube)](#34-video-walkthroughs-technical-podcasts--shorts-youtube)
 - [4. Repository Structure and Component Catalog](#4-repository-structure-and-component-catalog)
 - [5. GitHub Actions Workflows](#5-github-actions-workflows)
 - [6. Prerequisites](#6-prerequisites)
@@ -1583,7 +1584,7 @@ Below are the direct links and full descriptions, organized by original audio la
 #### 🇬🇧 Videos in English (Original Audio)
 
 <details>
-<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (5 Videos)</strong></summary>
+<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (8 Videos)</strong></summary>
 
 <br/>
 
@@ -1685,14 +1686,83 @@ Below are the direct links and full descriptions, organized by original audio la
 > ⏱️ Duration: 8:34
 > #Kubernetes #Observability #OpenTelemetry #Grafana #Jenkins #GKE #DevOps #PlatformEngineering #CloudNative
 
+##### 6. GKE Golden Path Blueprint 2026: Zero-Trust IDP, Workload Identity and Cilium eBPF
+- 🔗 **Link**: [https://www.youtube.com/watch?v=tmIf3jzlMlM](https://www.youtube.com/watch?v=tmIf3jzlMlM)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/tmIf3jzlMlM/edit](https://studio.youtube.com/video/tmIf3jzlMlM/edit)
+- ⏱️ **Duration**: 9:16
+- 📝 **Full Description**:
+> 🏛️ Complete Architectural Walkthrough: Building a Production Golden Path on GKE for 2026
+>
+> An in-depth technical deep-dive deconstructing the Jenkins 2026 reference architecture on Google Kubernetes Engine (GKE). Learn how enterprise platform teams eliminate static JSON credentials, hardcoded secrets, and manual cluster plumbing by codifying every layer from networking to internal developer portals.
+>
+> 📌 Core Architectural Pillars:
+> • Keyless Workload Identity: GitHub Actions and Kubernetes service accounts authenticate to GCP through cryptographic OIDC token exchange with zero long-lived service account keys.
+> • Internal Developer Platform (IDP): Backstage v1.52 integrates software cataloging, multi-engine CI status, TechDocs, and self-service scaffolder templates without manual repo sprawl.
+> • Dataplane V2 and Cilium eBPF: Enforcing strict zero-trust network policies, identity-aware egress filtering, and WireGuard inter-node encryption at the Linux kernel level.
+> • Declarative Infrastructure Lifecycle: Automated Day 0 bootstrap, Day 1 cluster rollout, Day 2 ops, and clean decommissioning orchestrated entirely through GitOps and Terraform.
+> • Enterprise Edge Security: GKE Gateway API with Identity-Aware Proxy (IAP) provides single sign-on without requiring third-party legacy VPNs.
+>
+> 🔗 Source Code and Reference Architecture:
+> • Infrastructure Repo: https://github.com/nubenetes/jenkins-2026
+> • GitOps Config Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> ⏱️ Duration: 9:16
+> #Kubernetes #GKE #PlatformEngineering #Backstage #DevOps #GitOps #ZeroTrust #CloudNative #Terraform #GoogleCloud
+
+##### 7. Pluggable CI/CD Engines on GKE: Jenkins, Tekton, GitHub ARC and Argo Workflows
+- 🔗 **Link**: [https://www.youtube.com/watch?v=SF7i2Ti6j08](https://www.youtube.com/watch?v=SF7i2Ti6j08)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/SF7i2Ti6j08/edit](https://studio.youtube.com/video/SF7i2Ti6j08/edit)
+- ⏱️ **Duration**: 7:50
+- 📝 **Full Description**:
+> ⚙️ Eliminating CI Vendor Lock-In: Orchestrating Four Pluggable CI Engines on GKE
+>
+> Architectural masterclass exploring how the Jenkins 2026 platform decouples application build pipelines from delivery infrastructure. Discover how four distinct cloud-native CI engines run side-by-side on Google Kubernetes Engine, sharing a unified 11-stage pipeline contract and feeding into a declarative two-repo GitOps delivery workflow.
+>
+> 📌 Key Technical Capabilities:
+> • Pluggable CI Engine Architecture: Switch seamlessly between Jenkins, Tekton, GitHub Actions Runner Controller (ARC), and Argo Workflows via a single feature flag.
+> • Unified Pipeline Contract: Standardized 11-stage lifecycle covering compilation, unit tests, Semgrep and CodeQL SAST, Trivy container scanning, container builds, and GitOps commit generation.
+> • Modern Jenkins as Code: Fully automated controller provisioning via Jenkins Configuration as Code (JCasC), Job DSL seed pipelines, and dynamic ephemeral agent pods.
+> • Two-Repo GitOps Decoupling: CI engines push container images and update the gitops-config repository without ever receiving cluster deployment privileges.
+> • Spot Autoscaling: Dedicated Spot node pools automatically provision compute for heavy build jobs and scale down to zero when idle.
+>
+> 🔗 Source Code and Pipeline Specs:
+> • Platform Repo: https://github.com/nubenetes/jenkins-2026
+> • GitOps Deployment Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> ⏱️ Duration: 7:50
+> #Jenkins #Tekton #GitHubActions #ArgoWorkflows #Kubernetes #CI #CD #GitOps #GKE #DevOps #PlatformEngineering
+
+##### 8. Full-Stack OpenTelemetry on GKE: Unified Metrics, Logs and Traces Observability
+- 🔗 **Link**: [https://www.youtube.com/watch?v=pCs7rP-cv08](https://www.youtube.com/watch?v=pCs7rP-cv08)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/pCs7rP-cv08/edit](https://studio.youtube.com/video/pCs7rP-cv08/edit)
+- ⏱️ **Duration**: 7:28
+- 📝 **Full Description**:
+> 📊 Solving Monitoring Fragmentation: Full-Stack OpenTelemetry and Grafana on GKE
+>
+> Deep-dive into enterprise cloud-native observability. Explore how the Jenkins 2026 platform implements end-to-end telemetry across Google Kubernetes Engine, capturing auto-instrumented traces, structured logs, and Prometheus metrics into a single correlated Grafana visualization plane.
+>
+> 📌 Telemetry Architecture Highlights:
+> • OpenTelemetry Collector Pipeline: Scalable DaemonSets and Deployment collectors scrape host metrics, ingest OTLP spans, and enrich data with cluster topology metadata.
+> • Multi-Backend Grafana Flexibility: Switch seamlessly between OSS Prometheus/Loki/Tempo, Grafana Cloud, Azure Managed Grafana, or Amazon Managed Grafana with a single configuration flag.
+> • Trace to Log Correlation: Seamless context propagation connecting application spans directly to structured container logs using TraceID and SpanID injection.
+> • Continuous Performance Load Testing: Parametrized k6 engine simulates realistic user traffic profiles, validating SLOs and thresholds directly on Grafana dashboards.
+> • Cost-Optimized Observability: Fine-tuned collection intervals, metric filtering, and storage retention designed for enterprise production scale.
+>
+> 🔗 Source Code and Dashboards:
+> • Observability Specs: https://github.com/nubenetes/jenkins-2026
+> • GitOps Monitoring Manifests: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> ⏱️ Duration: 7:28
+> #OpenTelemetry #Grafana #Kubernetes #GKE #Observability #Prometheus #Loki #Tempo #k6 #SRE #DevOps #Monitoring
+
 </details>
 
 <details>
-<summary>📂 <strong>Architecture Video Shorts (31 Shorts)</strong></summary>
+<summary>📂 <strong>Architecture Video Shorts (34 Shorts)</strong></summary>
 
 <br/>
 
-A complete library of **31 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
+A complete library of **34 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
 
 ### 📑 Quick Index Matrix (Ordered by Criteria)
 
@@ -1729,6 +1799,9 @@ A complete library of **31 focused, 60-to-90-second technical video shorts** bre
 | 29 | [Inside the Jenkins 2026 Grafana Alert Strategy](https://www.youtube.com/shorts/33hTEro0O78) | Observability & Databases | 🇬🇧 EN | `1:23` | [▶️ Watch](https://www.youtube.com/shorts/33hTEro0O78) |
 | 30 | [How Parameterized k6 Testing Closes the CI CD Loop](https://www.youtube.com/shorts/yG5DiLG2Cus) | Observability & Databases | 🇬🇧 EN | `1:19` | [▶️ Watch](https://www.youtube.com/shorts/yG5DiLG2Cus) |
 | 31 | [Inside the Golden Path Database Architecture](https://www.youtube.com/shorts/Xp5zHzLiadk) | Observability & Databases | 🇬🇧 EN | `1:25` | [▶️ Watch](https://www.youtube.com/shorts/Xp5zHzLiadk) |
+| 32 | [Four Pillars of Zero-Trust Kubernetes Platform Engineering](https://www.youtube.com/shorts/skAd95eggko) | Zero-Trust Platform & IDP | 🇬🇧 EN | `1:28` | [▶️ Watch](https://www.youtube.com/shorts/skAd95eggko) |
+| 33 | [How Binary Authorization Blocks Unsigned Containers in GKE](https://www.youtube.com/shorts/Ux3oDRcqptk) | Zero-Trust Security & DevSecOps | 🇬🇧 EN | `1:08` | [▶️ Watch](https://www.youtube.com/shorts/Ux3oDRcqptk) |
+| 34 | [How CloudNativePG Secures Highly Available PostgreSQL on GKE](https://www.youtube.com/shorts/8mukehyUiL8) | Cloud-Native HA Databases | 🇬🇧 EN | `1:11` | [▶️ Watch](https://www.youtube.com/shorts/8mukehyUiL8) |
 
 ---
 
@@ -2247,6 +2320,51 @@ A complete library of **31 focused, 60-to-90-second technical video shorts** bre
 >
 > #Shorts #DevSecOps #Semgrep #CodeQL #Trivy #BinaryAuthorization #Security #Kubernetes
 
+##### 32. Four Pillars of Zero-Trust Kubernetes Platform Engineering
+- 🔗 **Link**: [https://www.youtube.com/shorts/skAd95eggko](https://www.youtube.com/shorts/skAd95eggko)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/skAd95eggko/edit](https://studio.youtube.com/video/skAd95eggko/edit)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:28
+- 🏷️ **Domain**: Zero-Trust Security & Identity
+- 📝 **Full Description**:
+> 🚀 Four Pillars of Zero-Trust Platform Engineering on Google Kubernetes Engine!
+>
+> Traditional Kubernetes setups are fragile when relying on static passwords, open cluster networks, and overprivileged CI pipelines. Here is how modern Golden Path platforms implement zero-trust security across the entire stack:
+>
+> 📌 Key Architectural Pillars:
+> 1. Two-Repo GitOps: Physical separation of application source code from deployment states. CI pushes image tags; ArgoCD pulls reconciliations from inside the cluster.
+> 2. Keyless Workload Identity: Eliminates static JSON service account keys in favor of short-lived, cryptographically validated OIDC tokens.
+> 3. Dataplane V2 and Cilium eBPF: Enforces strict zero-trust network boundaries in the Linux kernel, preventing lateral movement if a pod is compromised.
+> 4. Gateway API and Identity-Aware Proxy: Secures developer access to internal tools at the network edge with Google SSO, eliminating third-party VPNs.
+>
+> 🔗 Explore the Full Architecture:
+> https://github.com/nubenetes/jenkins-2026
+>
+> #Shorts #Kubernetes #ZeroTrust #GKE #DevOps #PlatformEngineering #GitOps #Cilium #eBPF
+
+##### 33. How Binary Authorization Blocks Unsigned Containers in GKE
+- 🔗 **Link**: [https://www.youtube.com/shorts/Ux3oDRcqptk](https://www.youtube.com/shorts/Ux3oDRcqptk)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/Ux3oDRcqptk/edit](https://studio.youtube.com/video/Ux3oDRcqptk/edit)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:08
+- 🏷️ **Domain**: Zero-Trust Security & DevSecOps
+- 📝 **Full Description**:
+> 🔒 How Binary Authorization Blocks Unsigned Code from Running on GKE!
+>
+> What happens when an unvetted or vulnerable container attempts to bypass your CI/CD pipeline? Without admission controls, compromised credentials can push vulnerable microservices directly into production.
+>
+> 📌 DevSecOps Supply-Chain Protection:
+> • 11-Stage DevSecOps Pipeline: Scans code and containers with Semgrep, CodeQL, and Trivy.
+> • Cryptographic Attestations: Verified clean images receive an unforgeable digital signature via Cloud KMS.
+> • Binary Authorization Gatekeeper: GKE intercepts every incoming container at the admission controller, strictly rejecting any image lacking a valid cryptographic attestation.
+>
+> Unsigned code is blocked instantly at the gate, keeping production secure.
+>
+> 🔗 Discover the DevSecOps Blueprint:
+> https://github.com/nubenetes/jenkins-2026
+>
+> #Shorts #DevSecOps #BinaryAuthorization #Kubernetes #GKE #CloudSecurity #CloudKMS #ContainerSecurity
+
 #### Category 5: 📊 Full-Stack Observability, SRE Alerting & Database Architecture
 
 ##### 24. The Ultimate Plug and Play Observability Stack
@@ -2367,13 +2485,13 @@ A complete library of **31 focused, 60-to-90-second technical video shorts** bre
 - 📝 **Full Description**:
 > 🚀 Why do monitoring alerts always fire after an outage instead of before? Here is the 6-rule production alert strategy guarding the Jenkins 2026 platform!
 >
-> Examine the 6 standardized Grafana alert rules protecting the GKE Golden Path platform. Learn how proactive rules detect high JVM heap usage (>80%) before OOMKills occur, flag OpenTelemetry Collector memory pressure (>70%) to prevent silent metric loss, and monitor ArgoCD sync degradation and CloudNativePG replication lag.
+> Examine the 6 standardized Grafana alert rules protecting the GKE Golden Path platform. Learn how proactive rules detect high JVM heap usage (above 80%) before OOMKills occur, flag OpenTelemetry Collector memory pressure (above 70%) to prevent silent metric loss, and monitor ArgoCD sync degradation and CloudNativePG replication lag.
 >
 > 📌 Key Architectural Highlights:
 > • Rule 1 & 2 - Workload Health: Alerts on unready pods and degraded ArgoCD application sync states.
 > • Rule 3 - Database Integrity: Detects CloudNativePG streaming replication lag and cluster failover events.
 > • Rule 4 - Microservice RED Spikes: Triggers on elevated HTTP 5xx error rates across API routes.
-> • Rule 5 & 6 - Proactive SRE Guards: Warns on high JVM heap (>80%) and OTel Collector memory pressure (>70%).
+> • Rule 5 & 6 - Proactive SRE Guards: Warns on high JVM heap (above 80%) and OTel Collector memory pressure (above 70%).
 >
 > 👇 Explore the Full Architecture & Source Code:
 > 📁 Platform Infrastructure: https://github.com/nubenetes/jenkins-2026
@@ -2424,6 +2542,30 @@ A complete library of **31 focused, 60-to-90-second technical video shorts** bre
 > 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
 >
 > #Shorts #PostgreSQL #CloudNativePG #Kubernetes #Databases #HighAvailability #GKE #FinOps
+
+##### 34. How CloudNativePG Secures Highly Available PostgreSQL on GKE
+- 🔗 **Link**: [https://www.youtube.com/shorts/8mukehyUiL8](https://www.youtube.com/shorts/8mukehyUiL8)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/8mukehyUiL8/edit](https://studio.youtube.com/video/8mukehyUiL8/edit)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:11
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 🐘 How CloudNativePG Protects Stateful Databases on Kubernetes!
+>
+> How do you guarantee database durability and zero data loss when Kubernetes pods are designed to be ephemeral?
+>
+> 📌 High-Availability Database Highlights:
+> • Multi-AZ Synchronous Replication: Primary PostgreSQL pod instantly replicates transactions across two standby pods in different availability zones.
+> • Automated Failover: If a node or zone fails, CloudNativePG elects a standby replica in seconds.
+> • Continuous WAL Streaming: Every transaction is streamed as a Write-Ahead Log directly to an external Google Cloud Storage bucket before confirmation.
+> • Keyless Storage Access: Backup agents authenticate to cloud buckets using ephemeral Workload Identity tokens without static database passwords.
+>
+> Even if an entire cluster is destroyed, your data is safe and ready for instant recovery.
+>
+> 🔗 Check Out the Database Architecture:
+> https://github.com/nubenetes/jenkins-2026
+>
+> #Shorts #PostgreSQL #CloudNativePG #Kubernetes #Databases #HighAvailability #GKE #DisasterRecovery
 
 </details>
 
