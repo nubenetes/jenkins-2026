@@ -44,6 +44,10 @@
 
 **At a glance.** A self-contained, **two-repo GitOps** proof-of-concept platform that stands up a complete **build → scan → ship → observe → load-test** pipeline on **Google Kubernetes Engine**, configured **entirely as code** — *nothing is clicked in a UI* — and provisioned/torn down on demand from **GitHub Actions**. It takes the JHipster microservices reference app from a `git push` all the way to a running, fully-observed, traffic-tested deployment, and can do the whole round trip (create the cluster, deploy everything, exercise it, destroy it) in one lifecycle.
 
+> [!NOTE]
+> **Engineering Provenance & AI-Assisted Development**  
+> This repository was generated automatically via agentic AI pair programming, authored predominantly by **Claude Code Opus 4.8** with occasional contributions from **Gemini Google AI Ultra** during an intensive 1-month development and testing process in **June 2026**. The major cost incurred was **Google Cloud Platform (GCP)** infrastructure and compute during continuous live provisioning, multi-engine lifecycle testing, and load validation. See [§7. Engineering Provenance & AI-Assisted Development](#7-engineering-provenance--ai-assisted-development).
+
 **What it chains together, end to end:**
 
 - **CI engine — build, scan & containerize.** One of **four** mutually-exclusive engines selected by `ci.engine`: **Jenkins** by default (Helm chart + **JCasC** + a Job-DSL seed + a Groovy shared library), **Tekton**, **GitHub Actions (ARC)**, or **Argo Workflows** — all defined as code and sharing one ~11-stage pipeline contract (+ the shared [`resources/patch-app-source.sh`](resources/patch-app-source.sh) build-time patch + the [`services.yaml`](jenkins/pipelines/seed/services.yaml) registry). Pipelines compile, test, build images (Jib/Spring-Boot/Kaniko) and push to the registry. See [401](./docs/401-JENKINS.md) · [402](./docs/402-PIPELINES_AS_CODE.md) · [404](./docs/404-TEKTON.md) · [405](./docs/405-GITHUB_ACTIONS.md) · [406](./docs/406-ARGO_WORKFLOWS.md).
@@ -241,6 +245,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [4. Repository Structure and Component Catalog](#4-repository-structure-and-component-catalog)
 - [5. GitHub Actions Workflows](#5-github-actions-workflows)
 - [6. Prerequisites](#6-prerequisites)
+- [7. Engineering Provenance & AI-Assisted Development](#7-engineering-provenance--ai-assisted-development)
 
 ---
 
@@ -2745,6 +2750,17 @@ All **31 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/
 - (default mode) A [Grafana Cloud](https://grafana.com/products/cloud/) stack (free tier) for its OTLP gateway endpoint + API key.
 
 See [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) for the complete prerequisites and step-by-step deployment guide.
+
+---
+
+## 7. Engineering Provenance & AI-Assisted Development
+
+This entire repository, infrastructure-as-code baseline, and documentation ecosystem were generated automatically through agentic AI pair programming and automated software engineering workflows:
+
+- **Primary Architecture & Code Generation**: Authored predominantly by **Claude Code Opus 4.8**, driving platform architecture, Terraform modules, Kubernetes manifests, Helm values overlays, Groovy shared libraries (`vars/`), multi-engine CI/CD pipelines (Jenkins, Tekton, GitHub Actions ARC, Argo Workflows), and comprehensive technical documentation.
+- **Secondary AI Collaboration**: Specialized modules, integrations, and targeted code reviews were contributed occasionally by **Gemini Google AI Ultra**.
+- **Development & Testing Timeline**: Built, tested, and validated end-to-end over an intensive **one-month development sprint in June 2026**, spanning hundreds of iterative Day0 through Decom provisioning cycles, progressive rollouts, and multi-backend observability integrations.
+- **Resource Expenditure & Infrastructure Costs**: The primary economic cost of the project was **Google Cloud Platform (GCP)** infrastructure consumption. Live end-to-end testing required continuous provisioning and teardown of GKE clusters running Dataplane V2 (Cilium eBPF), Spot worker nodes, Cloud Load Balancing, Google Cloud Armor, Identity-Aware Proxy (IAP), Cloud Storage state backends, and full-stack observability pipelines under synthetic k6 load testing.
 
 ---
 
