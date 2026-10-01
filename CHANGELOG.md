@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Added
+- **Engineering Provenance & AI-Assisted Development in README.md** ([`README.md`](README.md)): Added attribution documenting that the repository was generated automatically, primarily by Claude Code Opus 4.8 with occasional contributions from Gemini Google AI Ultra during the 1-month development and testing cycle in June 2026, with GCP infrastructure comprising the primary project cost.
 
 ## [v1.7.0] - 2026-09-09
 
