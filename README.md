@@ -1589,7 +1589,7 @@ Below are the direct links and full descriptions, organized by original audio la
 #### 🇬🇧 Videos in English (Original Audio)
 
 <details>
-<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (8 Videos)</strong></summary>
+<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (11 Videos)</strong></summary>
 
 <br/>
 
@@ -1760,14 +1760,90 @@ Below are the direct links and full descriptions, organized by original audio la
 > ⏱️ Duration: 7:28
 > #OpenTelemetry #Grafana #Kubernetes #GKE #Observability #Prometheus #Loki #Tempo #k6 #SRE #DevOps #Monitoring
 
+##### 9. Air-Gapped Observability: Shifting from Monitoring to the 7 Pillars & SLO Metrics
+- 🔗 **Link**: [https://www.youtube.com/watch?v=AknmFwjITHo](https://www.youtube.com/watch?v=AknmFwjITHo)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/AknmFwjITHo/edit](https://studio.youtube.com/video/AknmFwjITHo/edit)
+- ⏱️ **Duration**: 10:05
+- 📝 **Full Description**:
+> 🌐 Air-Gapped Observability: Shifting from Monitoring to the 7 Pillars & SLO Metrics
+>
+> An exhaustive architectural masterclass and platform engineering guide on achieving true full-stack observability inside strictly disconnected (air-gapped) enterprise clouds. Learn why traditional monitoring tools blind teams to microservice failures, and how modern telemetry architectures solve unknown unknowns across OpenShift 4.18+, VMware vSphere, and sovereign enclaves.
+>
+> 📌 Key Architectural Themes & Technical Focus:
+> • The Monitoring vs Observability Divide: Moving beyond static threshold alerts (CPU over 90 percent) to inferring internal system health from external telemetry.
+> • The PromQL Mathematical Trap: Why site reliability engineers cannot mathematically average P99 percentiles, and how request-based SLOs replace fragile window-based metrics.
+> • The 7 Pillars of Modern Telemetry: Metrics, structured logging, distributed tracing waterfalls, continuous profiling, real user monitoring (RUM), network eBPF, and causal AIOps.
+> • Detecting Invisible Failures: How high tail latencies map to concrete backend bottlenecks: CFS quota CPU throttling and Kafka consumer lag driven by JVM garbage collection pauses.
+> • The Swivel-Chair Anti-Pattern: The operational dangers of running cloud SaaS in staging and on-premises tools in production, creating telemetry silos and doubling TCO.
+> • Infrastructure-First vs Application-First: Why legacy host monitors fail on Kubernetes and how automated runtime bytecode injection enables instant APM.
+>
+> 🔗 Source Code, Comparison Matrices & PoC Manifests:
+> • GitHub Architecture Repository: https://github.com/nubenetes/observability-platforms-comparison
+> • Air-Gapped Implementation Blueprint: https://github.com/nubenetes/observability-platforms-comparison/blob/main/docs/ARCHITECTURE_AND_AIRGAP.md
+> • Jenkins 2026 Full-Stack Platform: https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 10:05
+> #Observability #OpenShift #AirGapped #Kubernetes #SLO #Prometheus #Grafana #SRE #PlatformEngineering #DevOps #Microservices #CloudNative
+
+##### 10. Air-Gapped Observability: Diagnosing Unknown Unknowns in Hybrid Cloud Microservices
+- 🔗 **Link**: [https://www.youtube.com/watch?v=AeDhNiCUlBs](https://www.youtube.com/watch?v=AeDhNiCUlBs)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/AeDhNiCUlBs/edit](https://studio.youtube.com/video/AeDhNiCUlBs/edit)
+- ⏱️ **Duration**: 9:06
+- 📝 **Full Description**:
+> 🔍 Air-Gapped Observability: Diagnosing Unknown Unknowns in Hybrid Cloud Microservices
+>
+> A deep-dive technical guide for enterprise platform architects navigating the brutal operational shift from legacy monitoring to full-stack cloud-native observability inside disconnected, zero-egress environments. Discover how to diagnose complex cascading failures across Java microservices, Apache Kafka event streams, and relational databases.
+>
+> 📌 Core Engineering Topics Explored:
+> • Diagnosing Unknown Unknowns: How distributed tracing and continuous profiling pinpoint subtle, emergent anomalies that evade static dashboard thresholds.
+> • Anatomy of Distributed Cascading Failures: Tracking database connection pool exhaustion, uncommitted SQL locks, and Kafka consumer lag back to root causes.
+> • Zero-Egress Disqualification: Why pure-SaaS vendors (Datadog, New Relic, Grafana Cloud) cannot operate in air-gapped enclaves, forcing the selection of self-hosted enterprise platforms.
+> • Evaluating 12 Market Platforms: Comparing Dynatrace Managed, Instana Self-Hosted, Elastic ECK, Grafana OSS/LGTM, Splunk Enterprise, and Cisco AppDynamics across sovereign enclaves.
+> • Context Propagation & Waterfalls: Maintaining end-to-end W3C trace context across asynchronous message queues and multi-cluster boundaries without external internet access.
+> • Sovereign Cloud Compliance: Implementing offline artifact mirroring, local licensing proxies, and private image registries.
+>
+> 🔗 Architecture Docs and Enterprise Blueprints:
+> • Observability Platforms Matrix: https://github.com/nubenetes/observability-platforms-comparison
+> • Jenkins 2026 Enterprise Golden Path: https://github.com/nubenetes/jenkins-2026
+> • PoC Validation Test Suite: https://github.com/nubenetes/observability-platforms-comparison/tree/main/poc
+>
+> ⏱️ Duration: 9:06
+> #Observability #Kubernetes #OpenShift #AirGapped #DistributedTracing #Kafka #Microservices #SRE #DevOps #PlatformEngineering #CloudNative #Datadog #Dynatrace
+
+##### 11. Air-Gapped Observability Strategy: 12 Platforms, 3 Decision Tiers & TCO Analysis
+- 🔗 **Link**: [https://www.youtube.com/watch?v=22ELDrv1i4o](https://www.youtube.com/watch?v=22ELDrv1i4o)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/22ELDrv1i4o/edit](https://studio.youtube.com/video/22ELDrv1i4o/edit)
+- ⏱️ **Duration**: 8:33
+- 📝 **Full Description**:
+> 🏛️ Air-Gapped Observability Strategy: 12 Platforms, 3 Decision Tiers & TCO Analysis
+>
+> The definitive executive strategy session and procurement playbook for enterprise platform engineering teams. We deconstruct the real total cost of ownership (TCO) between open-source DIY stacks and commercial platforms, establishing clear strategic decision tiers for air-gapped hybrid clouds.
+>
+> 📌 Strategic Decision Framework:
+> • Shattering the Free Software Myth: Detailed 3-year TCO breakdown for open-source DIY stacks (Grafana LGTM / Elastic ECK) proving that zero license cost is offset by massive platform engineering maintenance and storage toil.
+> • The 3 Strategic Decision Tiers:
+>   - Tier 1 (Turnkey Commercial Primary): Dynatrace Managed for lowest operational risk, turnkey OneAgent injection, and automated causal AI root-cause analysis.
+>   - Tier 2 (Viable Commercial Alternatives): IBM Instana for predictable host-based pricing and 1-second metric fidelity; Elastic Stack for log-heavy security operations.
+>   - Tier 3 (Engineered Open Source Pathway): Grafana OSS/LGTM for organizations with dedicated SRE platform teams willing to manage backend storage and scaling.
+> • Eliminating the Swivel-Chair Trap: Establishing a unified telemetry model across connected lower environments and sovereign production clusters.
+> • Sizing & Operational Governance: Sizing Prometheus/Loki storage, managing retention policies, and securing high-availability clusters without outbound network egress.
+>
+> 🔗 Official Blueprint & Comparison Models:
+> • Comparison Repository: https://github.com/nubenetes/observability-platforms-comparison
+> • Decision Matrix & TCO Model: https://github.com/nubenetes/observability-platforms-comparison/blob/main/docs/TCO_ANALYSIS.md
+> • Golden Path Platform: https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 8:33
+> #Observability #FinOps #TCO #OpenShift #Kubernetes #Dynatrace #Grafana #Instana #Elasticsearch #SRE #PlatformEngineering #CloudArchitecture
+
 </details>
 
 <details>
-<summary>📂 <strong>Architecture Video Shorts (34 Shorts)</strong></summary>
+<summary>📂 <strong>Architecture Video Shorts (36 Shorts)</strong></summary>
 
 <br/>
 
-A complete library of **34 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
+A complete library of **36 focused, 60-to-90-second technical video shorts** breaking down the engineering patterns, zero-trust security controls, CI engines, GitOps workflows, and observability pipelines of the `jenkins-2026` platform on Google Kubernetes Engine (GKE).
 
 ### 📑 Quick Index Matrix (Ordered by Criteria)
 
@@ -1807,6 +1883,8 @@ A complete library of **34 focused, 60-to-90-second technical video shorts** bre
 | 32 | [Four Pillars of Zero-Trust Kubernetes Platform Engineering](https://www.youtube.com/shorts/skAd95eggko) | Zero-Trust Platform & IDP | 🇬🇧 EN | `1:28` | [▶️ Watch](https://www.youtube.com/shorts/skAd95eggko) |
 | 33 | [How Binary Authorization Blocks Unsigned Containers in GKE](https://www.youtube.com/shorts/Ux3oDRcqptk) | Zero-Trust Security & DevSecOps | 🇬🇧 EN | `1:08` | [▶️ Watch](https://www.youtube.com/shorts/Ux3oDRcqptk) |
 | 34 | [How CloudNativePG Secures Highly Available PostgreSQL on GKE](https://www.youtube.com/shorts/8mukehyUiL8) | Cloud-Native HA Databases | 🇬🇧 EN | `1:11` | [▶️ Watch](https://www.youtube.com/shorts/8mukehyUiL8) |
+| 35 | [Why Averages Lie in Microservices: SLO Metrics, P99 Latency & CFS Quota Throttling](https://www.youtube.com/shorts/5q_3PnAU1DM) | Observability & Databases | 🇬🇧 EN | `1:16` | [▶️ Watch](https://www.youtube.com/shorts/5q_3PnAU1DM) |
+| 36 | [Por Qué las Medias Mienten en Microservicios: Métricas SLO, Percentil 99 y CPU CFS](https://www.youtube.com/shorts/2XFYvmGmaS0) | Observability & Databases | 🇪🇸 ES | `1:12` | [▶️ Watch](https://www.youtube.com/shorts/2XFYvmGmaS0) |
 
 ---
 
@@ -2571,6 +2649,60 @@ A complete library of **34 focused, 60-to-90-second technical video shorts** bre
 > https://github.com/nubenetes/jenkins-2026
 >
 > #Shorts #PostgreSQL #CloudNativePG #Kubernetes #Databases #HighAvailability #GKE #DisasterRecovery
+
+##### 35. Why Averages Lie in Microservices: SLO Metrics, P99 Latency & CFS Quota Throttling
+- 🔗 **Link**: [https://www.youtube.com/shorts/5q_3PnAU1DM](https://www.youtube.com/shorts/5q_3PnAU1DM)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/5q_3PnAU1DM/edit](https://studio.youtube.com/video/5q_3PnAU1DM/edit)
+- 🌐 **Language**: English (Original Audio)
+- ⏱️ **Duration**: 1:16
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 📈 Why Averages Lie in Microservices: SLO Metrics, P99 Latency & CFS Quota Throttling!
+>
+> Why do Site Reliability Engineers refuse to trust average performance metrics? Because in distributed systems, averages mathematically hide brief but catastrophic bottlenecks!
+>
+> The Danger of Average Metrics:
+> • The Green Dashboard Illusion: A container reports a stable, healthy 40 percent average CPU utilization over a 1-minute window, but users experience stalled requests and timeouts.
+> • Microsecond Spikes: Zooming into millisecond resolution reveals the container spiking to 100 percent capacity during JVM garbage collection or burst traffic, triggering severe Linux CFS quota CPU throttling.
+> • Mathematical Smoothing: An average flattens a devastating 200ms spike across 59 seconds of idle time, masking latency disasters.
+>
+> The SRE Solution:
+> • Focus on the 99th Percentile: Track P99 and P95 latency distributions rather than mean response times.
+> • Never Average a P99: Aggregating percentiles across nodes in PromQL produces mathematically invalid data. Use histogram quantiles instead!
+> • Correlate with Tracing: Propagate Trace IDs to isolate the slowest 1 percent of transactions and resolve bottlenecks with precision.
+>
+> 🔗 Explore Full-Stack Observability & SLO Architectures:
+> https://github.com/nubenetes/observability-platforms-comparison
+> https://github.com/nubenetes/jenkins-2026
+>
+> #Shorts #Observability #SLO #Microservices #Kubernetes #SRE #Latency #P99 #Prometheus #Grafana #DevOps #Performance
+
+##### 36. Por Qué las Medias Mienten en Microservicios: Métricas SLO, Percentil 99 y CPU CFS
+- 🔗 **Link**: [https://www.youtube.com/shorts/2XFYvmGmaS0](https://www.youtube.com/shorts/2XFYvmGmaS0)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/2XFYvmGmaS0/edit](https://studio.youtube.com/video/2XFYvmGmaS0/edit)
+- 🌐 **Language**: Spanish (Original Audio)
+- ⏱️ **Duration**: 1:12
+- 🏷️ **Domain**: Observability & Databases
+- 📝 **Full Description**:
+> 📈 Por Qué las Medias Mienten en Microservicios: Métricas SLO, Percentil 99 y CPU CFS!
+>
+> El panel de control marca un uso de CPU perfecto, todo en verde, pero los usuarios se quejan de que la aplicación no carga. El problema no es la infraestructura: es que las medias te están mintiendo!
+>
+> Por qué las medias ocultan los cuellos de botella:
+> • La Ilusión del Dashboard: Un microservicio reporta un 40 por ciento de uso medio de CPU en un minuto, pero los usuarios sufren caídas de peticiones.
+> • Estrangulamiento CFS en Milisegundos: Al ampliar a nivel de milisegundos, el contenedor satura el 100 por ciento de su cuota de CPU durante pausas de Garbage Collection, bloqueando hilos de ejecución.
+> • Aplanamiento Matemático: La media diluye ese pico destructivo entre los segundos de inactividad, ocultando el fallo por completo.
+>
+> La Solución de los Equipos SRE:
+> • Céntrate en el Percentil 99 (P99): Mide el 1 por ciento de las peticiones más lentas en lugar del promedio general.
+> • Nunca Promedies un P99 en PromQL: Promediar percentiles es matemáticamente incorrecto. Utiliza histogram_quantile sobre métricas en bruto!
+> • Rastreo Distribuido y Perfilado: Inyecta Trace IDs para aislar la transacción exacta y analizar el consumo de memoria salto a salto.
+>
+> 🔗 Manifiestos de Observabilidad y Métricas SLO:
+> https://github.com/nubenetes/observability-platforms-comparison
+> https://github.com/nubenetes/jenkins-2026
+>
+> #Shorts #Observabilidad #SLO #Microservicios #Kubernetes #SRE #Latencia #Percentil99 #Prometheus #Grafana #DevOps #OpenShift
 
 </details>
 
