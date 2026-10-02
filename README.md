@@ -1455,7 +1455,7 @@ Below are the direct links and full descriptions, organized by original audio la
 #### 🇪🇸 Vídeos en Español (Audio Original)
 
 <details>
-<summary>📂 <strong>Recorridos Técnicos y Podcasts en Español (6 Vídeos)</strong></summary>
+<summary>📂 <strong>Recorridos Técnicos y Podcasts en Español (7 Vídeos)</strong></summary>
 
 <br/>
 
@@ -1584,12 +1584,38 @@ Below are the direct links and full descriptions, organized by original audio la
 > ⏱️ Duración: 21:41
 > #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
 
+##### 7. Podcast: Observabilidad en Entornos Air Gapped: 12 Plataformas
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=xyBbVX3wbqM](https://www.youtube.com/watch?v=xyBbVX3wbqM)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/xyBbVX3wbqM/edit](https://studio.youtube.com/video/xyBbVX3wbqM/edit)
+- ⏱️ **Duración**: 17:17
+- 📝 **Descripción completa**:
+> 🎙️ Podcast de Arquitectura: Observabilidad en Entornos Air Gapped y Comparativa de 12 Plataformas
+>
+> Episodio completo en formato podcast técnico en español analizando la arquitectura de observabilidad en entornos híbridos y desconectados (air-gapped) altamente regulados.
+>
+> Una investigación exhaustiva basada en los repositorios de ingeniería de Nubenetes, contrastando la construcción de plataformas internas de desarrollo (IDP Golden Path en jenkins-2026) con una evaluación de 12 plataformas de observabilidad.
+>
+> 📌 Puntos Clave de la Sesión:
+> • Crisis del Diagnóstico Tradicional: Por qué la monitorización basada en umbrales estáticos de CPU y memoria queda ciega ante fallos emergentes en microservicios distribuidos.
+> • Resolver los Desconocidos Desconocidos: Implementación de los 7 pilares de la observabilidad (Métricas, Logs, Trazas distribuidas, Profiling continuo con Pyroscope, RUM, Sintéticos y Topología causal).
+> • La Guerra contra las Medias: El engaño estadístico de las medias aritméticas y la necesidad de auditar percentiles P99 para detectar throttling por cuotas CFS en el kernel de Linux.
+> • Análisis de 12 Plataformas en 3 Niveles: Descalificación de soluciones SaaS dependientes de internet y comparativa entre Dynatrace Managed, IBM Instana, Elastic Stack y Grafana LGTM.
+> • El Espejismo del Open Source Gratuito: Desglose de costes reales de TCO (Total Cost of Ownership), horas de ingeniería de plataforma requeridas y consumo de almacenamiento en disco.
+>
+> 🔗 Repositorios Oficiales y Código Fuente:
+> • Comparativa de 12 Plataformas: https://github.com/nubenetes/observability-platforms-comparison
+> • Plataforma Golden Path IDP: https://github.com/nubenetes/jenkins-2026
+> • Manifiestos de Validación PoC: https://github.com/nubenetes/observability-platforms-comparison/tree/main/poc
+>
+> ⏱️ Duración: 17:17
+> #Observabilidad #AirGapped #Podcast #Kubernetes #OpenShift #Dynatrace #Prometheus #Grafana #SRE #DevOps #PlatformEngineering
+
 </details>
 
 #### 🇬🇧 Videos in English (Original Audio)
 
 <details>
-<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (11 Videos)</strong></summary>
+<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (12 Videos)</strong></summary>
 
 <br/>
 
@@ -1835,6 +1861,35 @@ Below are the direct links and full descriptions, organized by original audio la
 >
 > ⏱️ Duration: 8:33
 > #Observability #FinOps #TCO #OpenShift #Kubernetes #Dynatrace #Grafana #Instana #Elasticsearch #SRE #PlatformEngineering #CloudArchitecture
+
+##### 12. Podcast: Air Gapped Observability: 12 Platforms Comparison & TCO
+- 🔗 **Link**: [https://www.youtube.com/watch?v=b8RVbo6ecUg](https://www.youtube.com/watch?v=b8RVbo6ecUg)
+- 🛠️ **Studio Edit**: [https://studio.youtube.com/video/b8RVbo6ecUg/edit](https://studio.youtube.com/video/b8RVbo6ecUg/edit)
+- ⏱️ **Duration**: 55:23
+- 📝 **Full Description**:
+> 🎙️ Podcast: Air Gapped Observability: 12 Platforms Comparison & 3-Year TCO Analysis
+>
+> An exhaustive 55-minute architectural podcast masterclass deconstructing enterprise full-stack observability inside strictly disconnected (air-gapped) hybrid cloud environments.
+>
+> Designed for Chief Architects, Platform Engineering Leads, and FinOps Directors, this deep dive explores the technical trade-offs, operational realities, and true total cost of ownership across 12 market-leading platforms.
+>
+> 📌 Strategic Frameworks & Discussion Roadmap:
+> • The Air-Gapped Architectural Divider: Why zero outbound internet egress immediately disqualifies pure SaaS vendors (Datadog, New Relic, Grafana Cloud) in defense, banking, and sovereign enclaves.
+> • 3 Strategic Decision Tiers:
+>   - Tier 1 Turnkey Commercial (Dynatrace Managed): Lowest operational risk, automated bytecode injection, and deterministic causal AI root cause analysis.
+>   - Tier 2 Viable Commercial Alternatives (IBM Instana, Elastic ECK): Predictable licensing models and high-fidelity streaming metrics.
+>   - Tier 3 Engineered Open Source (Grafana LGTM, Prometheus, VictoriaMetrics): Full autonomy for dedicated platform teams willing to absorb infrastructure toil.
+> • The 7 Pillars of Modern Observability: Moving beyond static monitoring (known knowns) to solve unknown unknowns across distributed Java microservices and Apache Kafka streams.
+> • The PromQL Mathematical Fallacy: Why mathematically averaging P99 percentiles is flawed, and how request-based SLOs accurately capture user experience.
+> • Real 3-Year FinOps TCO: Shattering the free open-source myth by modeling real-world engineering maintenance hours, compute overhead, and storage footprints.
+>
+> 🔗 Official Blueprint & Architecture Repositories:
+> • Observability Platforms Matrix: https://github.com/nubenetes/observability-platforms-comparison
+> • Golden Path IDP Reference Architecture: https://github.com/nubenetes/jenkins-2026
+> • PoC Test Harness: https://github.com/nubenetes/observability-platforms-comparison/tree/main/poc
+>
+> ⏱️ Duration: 55:23
+> #Observability #AirGapped #Kubernetes #OpenShift #Dynatrace #Grafana #Prometheus #FinOps #TCO #SRE #PlatformEngineering #DevOps #Podcast
 
 </details>
 
